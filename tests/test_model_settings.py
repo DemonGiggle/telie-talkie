@@ -3,6 +3,7 @@ import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from telegram_talkie.config import (
@@ -12,10 +13,20 @@ from telegram_talkie.config import (
     NetworkConfig,
     StorageConfig,
 )
-from telegram_talkie.models import KWS_FILES, LocalDetector, setup_models
+from telegram_talkie.models import KWS_FILES, LocalDetector, keyword_text, setup_models
 
 
-def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("wake_phrase", "expected_phrases"),
+    [
+        ("Hey Buddy", ("HEY BUDDY",)),
+        (("Hey Buddy", "Wake up"), ("HEY BUDDY", "WAKE UP")),
+        ((" Hey  Buddy ", "HEY BUDDY", "Wake up"), ("HEY BUDDY", "WAKE UP")),
+    ],
+)
+def test_selected_model_files_and_detection_options_reach_runtime(
+    tmp_path, monkeypatch, wake_phrase, expected_phrases
+):
     import sys
 
     models = ModelsConfig(
@@ -31,15 +42,29 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
         path = models.path(field)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fixture-model")
-    models.path("tokens").write_text("HEY 0\nBUDDY 1\n")
+    models.path("tokens").write_text("HEY 0\nBUDDY 1\nWAKE 2\nUP 3\n")
     calls = {}
 
     class Keyword:
         def __init__(self, **kwargs):
             calls["keyword"] = kwargs
+            self.result = None
 
         def create_stream(self):
-            return object()
+            return SimpleNamespace(accept_waveform=lambda rate, samples: None)
+
+        def is_ready(self, stream):
+            return self.result is not None
+
+        def decode_stream(self, stream):
+            pass
+
+        def get_result(self, stream):
+            return self.result
+
+        def reset_stream(self, stream):
+            self.result = None
+            calls["resets"] = calls.get("resets", 0) + 1
 
     class VadConfig:
         def __init__(self):
@@ -58,8 +83,9 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
             assert model_file == str(models.path("bpe_model"))
 
         def encode(self, phrase, out_type):
-            assert phrase == "HEY BUDDY" and out_type is str
-            return ["HEY", "BUDDY"]
+            assert phrase in expected_phrases and out_type is str
+            calls.setdefault("encoded", []).append(phrase)
+            return phrase.split()
 
     monkeypatch.setitem(
         sys.modules,
@@ -75,7 +101,7 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
         models=models,
         storage=StorageConfig(tmp_path / "state"),
         detection=DetectionConfig(
-            wake_phrase="Hey Buddy",
+            wake_phrase=wake_phrase,
             provider="cuda",
             device=2,
             num_threads=3,
@@ -87,17 +113,51 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
             vad_buffer_seconds=20,
         ),
     )
-    LocalDetector(config)
+    detector = LocalDetector(config)
     keyword = calls["keyword"]
     assert keyword["encoder"] == str(models.path("encoder"))
     assert keyword["tokens"] == str(models.path("tokens"))
-    assert Path(keyword["keywords_file"]).read_text() == "HEY BUDDY @HEY_BUDDY\n"
+    assert Path(keyword["keywords_file"]).read_text() == "".join(
+        phrase + " @" + phrase.replace(" ", "_") + "\n" for phrase in expected_phrases
+    )
+    assert calls["encoded"] == list(expected_phrases)
     assert keyword["provider"] == "cuda" and keyword["device"] == 2
     assert keyword["feature_dim"] == 64 and keyword["max_active_paths"] == 6
     assert calls["vad"].silero_vad.model == str(models.path("vad"))
     assert calls["vad"].silero_vad.min_silence_duration == 0.1
     assert calls["vad"].silero_vad.max_speech_duration == 120
     assert calls["vad"].num_threads == 1 and calls["buffer"] == 20
+    samples = np.zeros(512, dtype=np.float32)
+    for phrase in expected_phrases:
+        detector.kws.result = phrase.replace(" ", "_")
+        assert detector._wake(samples)
+        assert not detector._wake(samples)
+    assert calls["resets"] == len(expected_phrases)
+
+
+@pytest.mark.parametrize("invalid_tokens", [[], ["MISSING"], ["<unk>"]])
+def test_every_wake_phrase_must_be_representable(tmp_path, monkeypatch, invalid_tokens):
+    import sys
+
+    models = ModelsConfig(directory=tmp_path)
+    models.path("tokens").write_text("HEY 0\nBUDDY 1\n<unk> 2\n")
+
+    class Tokenizer:
+        def __init__(self, model_file):
+            pass
+
+        def encode(self, phrase, out_type):
+            return ["HEY", "BUDDY"] if phrase == "HEY BUDDY" else invalid_tokens
+
+    monkeypatch.setitem(
+        sys.modules, "sentencepiece", SimpleNamespace(SentencePieceProcessor=Tokenizer)
+    )
+    config = Config(
+        models=models,
+        detection=DetectionConfig(wake_phrase=("HEY BUDDY", "UNKNOWN PHRASE")),
+    )
+    with pytest.raises(ValueError, match="Wake phrase cannot be represented"):
+        keyword_text(config)
 
 
 @pytest.mark.parametrize("malicious_link", [False, True])

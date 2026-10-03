@@ -12,14 +12,14 @@ If you do not know the ID, run `pair` with the runtime stopped, send the printed
 
 ## Audio checks and calibration
 
-Set `detection.wake_phrase` to your preferred English phrase in TOML, such as `HEY BUDDY`, and restart the app/service. The app creates the keyword configuration automatically; the [wake phrase settings](configuration.md#wake-phrase) explain the supported format.
+Set `detection.wake_phrase` to your preferred English phrases in TOML, such as `["HELLO KITTY", "HEY BUDDY"]`, and restart the app/service. Any listed phrase triggers recording; a single string also works. The app creates the keyword configuration automatically; the [wake phrase settings](configuration.md#wake-phrase) explain the supported format.
 
 1. Run `telie-talkie devices` and select the intended input and output. Device names usually survive reboots better than numeric indices. Where several devices share a name, use a more specific PortAudio name.
 2. Run `telie-talkie doctor --audio-check`. Hear the ready tone, speak for the configured check duration (three seconds by default), and confirm the replay is clear. Set the input rate and channels supported by the device; capture is normalized locally to 16 kHz mono. Output rate defaults to 48 kHz.
-3. Run `telie-talkie run`. Say the wake phrase clearly, wait for the beep and brief settling interval, then speak. Test at the normal distance and background noise level.
+3. Run `telie-talkie run`. Say each configured wake phrase clearly, wait for the beep and brief settling interval, then speak. Test at the normal distance and background noise level.
 4. Increase `keywords_threshold` if ordinary speech causes false triggers. Decrease it cautiously if the phrase rarely triggers. `keywords_score` controls keyword boosting; higher scores make the phrase easier to detect.
 5. Tune `vad_threshold` if noise counts as speech or quiet speech is missed. Keep pre-roll at least as long as the VAD minimum speech confirmation period.
-6. Send a voice note containing the wake phrase back to the device. Playback should not trigger a recording. Increase `audio.settle_seconds` if room echoes last beyond playback.
+6. Send voice notes containing the configured wake phrases back to the device. Playback should not trigger a recording. Increase `audio.settle_seconds` if room echoes last beyond playback.
 
 If a USB microphone exposes 44.1 or 48 kHz, set `audio.input_sample_rate` to that native rate; the app handles streaming resampling. The [configuration guide](configuration.md) includes stereo input, buffering, latency, slower CPU, and network examples. The service below uses an ALSA/PortAudio device available to the `audio` group; a desktop-only PulseAudio/PipeWire session may require a user service and its session environment instead.
 

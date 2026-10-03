@@ -129,7 +129,7 @@ class CodecConfig:
 
 @dataclass(frozen=True)
 class DetectionConfig:
-    wake_phrase: str = "HELLO KITTY"
+    wake_phrase: str | tuple[str, ...] = "HELLO KITTY"
     keywords_score: float = 1.5
     keywords_threshold: float = 0.25
     num_trailing_blanks: int = 1
@@ -144,6 +144,11 @@ class DetectionConfig:
     vad_min_silence_seconds: float = 0.032
     vad_max_speech_seconds: float = 0.0
     vad_buffer_seconds: float = 65.0
+
+    @property
+    def wake_phrases(self) -> tuple[str, ...]:
+        phrases = (self.wake_phrase,) if isinstance(self.wake_phrase, str) else self.wake_phrase
+        return tuple(dict.fromkeys(" ".join(phrase.upper().split()) for phrase in phrases))
 
 
 @dataclass(frozen=True)
@@ -218,7 +223,15 @@ def _table(cls, values: dict, base: Path):
     converted = dict(values)
     for key, value in values.items():
         default = getattr(defaults, key)
-        if key.endswith("_device"):
+        if cls is DetectionConfig and key == "wake_phrase":
+            valid = isinstance(value, str) or (
+                isinstance(value, list)
+                and bool(value)
+                and all(isinstance(item, str) for item in value)
+            )
+            if valid and isinstance(value, list):
+                converted[key] = tuple(value)
+        elif key.endswith("_device"):
             valid = type(value) in (int, str) and (not isinstance(value, str) or bool(value))
         elif key.endswith("_latency"):
             valid = (
@@ -365,11 +378,20 @@ def validate_config(config: Config) -> None:
         and d.device >= 0
     ):
         raise ValueError("Invalid keyword detection settings")
+    phrases = (d.wake_phrase,) if isinstance(d.wake_phrase, str) else d.wake_phrase
     if not (
-        d.wake_phrase.strip()
-        and all(c.isascii() and (c.isalpha() or c == " ") for c in d.wake_phrase)
+        isinstance(phrases, tuple)
+        and bool(phrases)
+        and all(
+            isinstance(phrase, str)
+            and bool(phrase.strip())
+            and bool(re.fullmatch(r"[A-Za-z ]+", phrase))
+            for phrase in phrases
+        )
     ):
-        raise ValueError("wake_phrase must contain English letters and spaces")
+        raise ValueError(
+            "wake_phrase must be a phrase or nonempty array using English letters and spaces"
+        )
     if not (
         a.settle_seconds >= 0
         and d.vad_min_speech_seconds > 0

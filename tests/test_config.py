@@ -3,12 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from telegram_talkie.config import Config, TelegramConfig, load_config, tomllib
+from telegram_talkie.config import Config, DetectionConfig, TelegramConfig, load_config, tomllib
 
 
 def test_example_config_and_relative_paths():
     config = load_config(Path(__file__).parents[1] / "config.example.toml")
-    assert config.detection.wake_phrase == "HELLO KITTY"
+    assert config.detection.wake_phrase == ("HELLO KITTY",)
+    assert config.detection.wake_phrases == ("HELLO KITTY",)
     assert config.recording.speech_wait_seconds == 5
     assert config.recording.silence_seconds == 1.5
     assert config.recording.max_seconds == 60
@@ -124,4 +125,54 @@ def test_user_id_is_still_required(settings):
 def test_custom_wake_phrase_is_loaded_from_settings(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[detection]\nwake_phrase="Hey Buddy"\n')
-    assert load_config(path).detection.wake_phrase == "Hey Buddy"
+    detection = load_config(path).detection
+    assert detection.wake_phrase == "Hey Buddy"
+    assert detection.wake_phrases == ("HEY BUDDY",)
+
+
+@pytest.mark.parametrize(
+    ("setting", "expected"),
+    [
+        ('" Hello   Kitty "', ("HELLO KITTY",)),
+        ('["HEY BUDDY"]', ("HEY BUDDY",)),
+        ('["HELLO KITTY", "Hey Buddy", "Wake up"]', ("HELLO KITTY", "HEY BUDDY", "WAKE UP")),
+        ('[" Hello   Kitty ", "hello kitty", "Hey Buddy"]', ("HELLO KITTY", "HEY BUDDY")),
+        ('["Hello", "Talkie"]', ("HELLO", "TALKIE")),
+    ],
+)
+def test_wake_phrases_are_normalized_and_deduplicated(tmp_path, setting, expected):
+    path = tmp_path / "config.toml"
+    path.write_text("[detection]\nwake_phrase=" + setting)
+    assert load_config(path).detection.wake_phrases == expected
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        '""',
+        '"   "',
+        '"HEY-BUDDY"',
+        '"HELLO 123"',
+        '"H\u00e9llo"',
+        '"HELLO\\tKITTY"',
+        "[]",
+        '[""]',
+        '["HELLO KITTY", "   "]',
+        '["HELLO KITTY", "WAKE-UP"]',
+        '["HELLO KITTY", 123]',
+        '["HELLO KITTY", true]',
+        '[["HELLO KITTY"]]',
+        "123",
+        "true",
+        '{phrase="HELLO KITTY"}',
+    ],
+)
+def test_invalid_wake_phrases_fail_before_startup(tmp_path, setting):
+    path = tmp_path / "config.toml"
+    path.write_text("[detection]\nwake_phrase=" + setting)
+    with pytest.raises(ValueError, match="wake_phrase"):
+        load_config(path)
+
+
+def test_omitted_wake_phrases_keep_the_default():
+    assert DetectionConfig().wake_phrases == ("HELLO KITTY",)

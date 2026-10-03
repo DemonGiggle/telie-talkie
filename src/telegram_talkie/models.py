@@ -122,15 +122,17 @@ def keyword_text(config: Config) -> str:
     import sentencepiece as spm
 
     processor = spm.SentencePieceProcessor(model_file=str(config.models.path("bpe_model")))
-    phrase = " ".join(config.detection.wake_phrase.upper().split())
-    tokens = processor.encode(phrase, out_type=str)
     vocabulary = {
         line.rsplit(maxsplit=1)[0]
         for line in config.models.path("tokens").read_text(encoding="utf-8").splitlines()
     }
-    if not tokens or any(token not in vocabulary or token == "<unk>" for token in tokens):
-        raise ValueError("Wake phrase cannot be represented by the keyword model")
-    return " ".join(tokens) + " @" + phrase.replace(" ", "_") + "\n"
+    lines = []
+    for phrase in config.detection.wake_phrases:
+        tokens = processor.encode(phrase, out_type=str)
+        if not tokens or any(token not in vocabulary or token == "<unk>" for token in tokens):
+            raise ValueError("Wake phrase cannot be represented by the keyword model")
+        lines.append(" ".join(tokens) + " @" + phrase.replace(" ", "_") + "\n")
+    return "".join(lines)
 
 
 class LocalDetector:

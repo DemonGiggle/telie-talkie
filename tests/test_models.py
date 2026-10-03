@@ -29,9 +29,22 @@ def test_real_bpe_keyword_uses_configured_phrase(config, phrase):
     assert "<unk>" not in text
 
 
+def test_real_bpe_emits_each_unique_keyword(config):
+    phrases = (" Hello   Kitty ", "HEY BUDDY", "hello kitty", "WAKE UP")
+    config = replace(config, detection=replace(config.detection, wake_phrase=phrases))
+    lines = keyword_text(config).splitlines()
+    assert [line.split(" @")[1] for line in lines] == ["HELLO_KITTY", "HEY_BUDDY", "WAKE_UP"]
+    assert all("<unk>" not in line for line in lines)
+
+
 @pytest.mark.parametrize("block_size", [128, 512, 1024])
-async def test_real_models_threaded_silence_and_reset(config, block_size):
-    config = replace(config, detection=replace(config.detection, wake_phrase="HEY BUDDY"))
+@pytest.mark.parametrize("phrases", ["HEY BUDDY", ("HELLO KITTY", "HEY BUDDY", "WAKE UP")])
+async def test_real_models_threaded_silence_and_reset(config, tmp_path, block_size, phrases):
+    config = replace(
+        config,
+        detection=replace(config.detection, wake_phrase=phrases),
+        storage=replace(config.storage, directory=tmp_path),
+    )
     detector = LocalDetector(config)
     for _ in range(40):
         assert not await detector.wake(np.zeros(block_size, dtype=np.float32))

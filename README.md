@@ -17,7 +17,7 @@ Say **“Hello Kitty”**, wait for the beep, and speak. Your bot sends the reco
 
 ### Why Telie Talkie?
 
-- **Hands-free sending.** Local keyword detection starts a recording; silence finishes it.
+- **Hands-free sending.** Choose one or more local wake phrases; silence finishes each recording.
 - **Simple replies.** Telegram voice notes and audio files play automatically, in order.
 - **One trusted user.** Set your numeric Telegram user ID to authorize your private chat.
 - **Resilient queues.** SQLite and local audio files survive outages and process restarts.
@@ -120,7 +120,7 @@ Operational options include native audio format and channel routing, gains, hard
 | `audio.input_channel` | `0` | Select a channel, or use `-1` to average channels |
 | `audio.block_size`, `audio.buffer_blocks` | `512`, `64` | Hardware capture buffering |
 | `audio.volume`, `audio.beep_volume` | `0.8`, `0.2` | Playback and tone amplitude |
-| `detection.wake_phrase` | `HELLO KITTY` | English wake phrase, tokenized automatically |
+| `detection.wake_phrase` | `HELLO KITTY` | One English phrase or an array; any listed phrase triggers |
 | `detection.keywords_threshold` | `0.25` | Increase to make triggering harder |
 | `detection.vad_threshold` | `0.5` | Speech detection threshold |
 | `recording.speech_wait_seconds` | `5.0` | Wait for speech after the beep |
@@ -133,6 +133,15 @@ Operational options include native audio format and channel routing, gains, hard
 | `storage.max_audio_bytes` | `536870912` | Audio budget, including partial downloads |
 | `telegram.max_download_bytes` | `20000000` | Incoming compressed file limit |
 | `telegram.max_incoming_seconds` | `300.0` | Incoming decoded duration limit |
+
+Choose multiple wake phrases in your existing detection table:
+
+```toml
+[detection]
+wake_phrase = ["HELLO KITTY", "HEY BUDDY", "WAKE UP"]
+```
+
+Single-string settings remain supported. Restart the app or service after editing; see the [wake phrase guide](docs/configuration.md#wake-phrase) for validation and calibration.
 
 ### Offline behavior
 

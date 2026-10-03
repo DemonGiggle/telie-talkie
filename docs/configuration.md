@@ -11,7 +11,7 @@ The token is loaded from a systemd credential, a token file, or an environment v
 | `telegram` | Authorized user and optional chat override, token source variable names and credential filename, API base URL, long-poll timeout, incoming size and duration limits |
 | `audio` | Devices, native rates, channels, channel selection, gains, hardware/processing blocks, buffers, latency, resampling quality, read timeout, speaker settling |
 | `tones` | Ready/error frequencies, duration, repeat counts, and spacing |
-| `detection` | Wake phrase, keyword thresholds/boosting, trailing blanks, beam paths, feature dimension, inference provider/device/threads, VAD thresholds/timing/buffer |
+| `detection` | Wake phrases, keyword thresholds/boosting, trailing blanks, beam paths, feature dimension, inference provider/device/threads, VAD thresholds/timing/buffer |
 | `recording` | Speech wait, finishing silence, maximum duration, pre-roll, and retained trailing silence |
 | `codec` | FFmpeg executable, Opus bitrate/rate/application/frame duration/complexity, threads, conversion timeout, output size, read chunks, accepted input containers |
 | `network` | Connect/read/write/pool timeouts, connection limits, and download chunk size |
@@ -44,14 +44,16 @@ For deployment, use the supplied [systemd service and credential instructions](s
 
 ## Wake phrase
 
-Set the phrase in the existing `[detection]` table:
+Set one or more phrases in the existing `[detection]` table. Saying any listed phrase starts the same ready-beep and recording flow:
 
 ```toml
 [detection]
-wake_phrase = "HEY BUDDY"
+wake_phrase = ["HELLO KITTY", "HEY BUDDY", "WAKE UP"]
 ```
 
-Use English letters and spaces. The app normalizes case and spacing, checks the phrase against the selected model's vocabulary, and generates the keyword file automatically. Restart the app after changing it; for systemd, run `sudo systemctl restart telie-talkie.service`. The default remains `HELLO KITTY`. Model accuracy depends on the phrase, microphone, and room, so repeat the wake checks after changing it and tune `keywords_threshold` or `keywords_score` as needed.
+Use nonempty strings containing English letters and spaces. Single words are allowed. The app normalizes case and spacing, removes duplicate phrases while keeping their order, checks every phrase against the selected model's vocabulary, and generates one keyword line per phrase following the [sherpa-onnx keyword format](https://k2-fsa.github.io/sherpa/onnx/kws/index.html#keywords-file). An empty array or any invalid phrase prevents startup. `keywords_threshold` and `keywords_score` apply to all listed phrases.
+
+Existing single-string settings such as `wake_phrase = "HEY BUDDY"` still work. An omitted setting defaults to `HELLO KITTY`; an explicit list replaces that default. Restart the app after changing it; for systemd, run `sudo systemctl restart telie-talkie.service`. Model accuracy depends on each phrase, microphone, and room, so test every configured phrase and tune `keywords_threshold` or `keywords_score` as needed.
 
 ## Native microphone rates and channels
 

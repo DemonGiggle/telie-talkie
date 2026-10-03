@@ -33,7 +33,8 @@ beep_volume = 0.2
 settle_seconds = 0.2
 
 [detection]
-wake_phrase = "HELLO KITTY" # Change to your English wake phrase; restart the app/service afterward.
+wake_phrase = ["HELLO KITTY"] # Any listed English phrase triggers; e.g. ["HELLO KITTY", "HEY BUDDY"].
+# A single string is also supported. Restart the app/service after changes.
 keywords_score = 1.5
 keywords_threshold = 0.25
 num_trailing_blanks = 1
