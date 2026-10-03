@@ -4,7 +4,7 @@
 
 Create a dedicated bot through [@BotFather](https://t.me/BotFather) with `/newbot`. Start its private chat before pairing. The bot must not share a polling connection with another application. `doctor --online` checks for an active webhook; remove a previously configured webhook through the Telegram Bot API before using long polling.
 
-Set the token in the environment variable named by `telegram.token_env`. Never paste it into a URL in a bug report, terminal log, or screenshot. Run `pair` with the runtime stopped, send the printed command privately, and configure both IDs. Pairing only accepts the exact random code; its lifetime defaults to five minutes and is configurable. Use a dedicated new bot for initial pairing: pairing polls may acknowledge earlier unrelated updates while looking for the code.
+For interactive use, set the token in the environment variable named by `telegram.token_env`. A token file supplied through `telegram.token_file_env` is also supported. For unattended use, follow the [systemd credential setup](systemd.md#token-design). Never paste it into a URL in a bug report, terminal log, or screenshot. Run `pair` with the runtime stopped, send the printed command privately, and configure both IDs. Pairing only accepts the exact random code; its lifetime defaults to five minutes and is configurable. Use a dedicated new bot for initial pairing: pairing polls may acknowledge earlier unrelated updates while looking for the code.
 
 ## Audio checks and calibration
 
@@ -19,38 +19,9 @@ If a USB microphone exposes 44.1 or 48 kHz, set `audio.input_sample_rate` to tha
 
 ## Run at startup
 
-The supplied service uses generic installation paths and a dedicated `telie` service account. From the repository checkout, install the code and models under `/opt/telie-talkie`, local configuration under `/etc/telie-talkie`, and state under `/var/lib/telie-talkie`.
+Follow the [systemd installation guide](systemd.md) to install the app with a dedicated service account, startup at boot, automatic recovery, and graceful shutdown. The supplied unit uses systemd credentials to read a root-owned token file. Configuration and models remain read-only, and queued audio lives in a private managed state directory.
 
-```bash
-sudo useradd --system --user-group --no-create-home --groups audio telie
-sudo install -d -m 0755 /opt/telie-talkie
-sudo cp -r pyproject.toml README.md LICENSE src /opt/telie-talkie/
-sudo python3 -m venv /opt/telie-talkie/.venv
-sudo /opt/telie-talkie/.venv/bin/python -m pip install /opt/telie-talkie
-
-sudo install -d -m 0750 -o root -g telie /etc/telie-talkie
-sudo install -d -m 0700 -o telie -g telie /var/lib/telie-talkie
-sudo install -m 0640 -o root -g telie config.example.toml /etc/telie-talkie/config.toml
-sudo install -m 0600 deploy/bot.env.example /etc/telie-talkie/bot.env
-sudoedit /etc/telie-talkie/config.toml /etc/telie-talkie/bot.env
-```
-
-Set the paired IDs and audio devices in the installed TOML file. Set `storage.directory = "/var/lib/telie-talkie"` and `models.directory = "/opt/telie-talkie/models"`. Replace the environment file's token placeholder locally.
-
-Download models before starting the protected service:
-
-```bash
-sudo /opt/telie-talkie/.venv/bin/telie-talkie --config /etc/telie-talkie/config.toml setup-models
-# setup-models writes the runtime keyword file as the invoking user.
-sudo chown -R telie:telie /var/lib/telie-talkie
-sudo install -m 0644 deploy/telie-talkie.service /etc/systemd/system/telie-talkie.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now telie-talkie
-sudo systemctl status telie-talkie
-sudo journalctl -u telie-talkie -f
-```
-
-The service restarts after failures, retains queues, and permits writes only to its state directory. Keep the configuration and state together with the original bot/user pairing. Changing the bot ID or authorized user requires a separate state directory to avoid sending old recordings to a different account. Rotating the token for the same bot retains the queue binding.
+The guide covers installation, pairing and audio checks as the service account, token rotation, custom paths, and migration from the previous environment-file service.
 
 ## Troubleshooting
 

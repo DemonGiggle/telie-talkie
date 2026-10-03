@@ -16,6 +16,8 @@ class TelegramConfig:
     chat_id: int = 0
     user_id: int = 0
     token_env: str = "TELEGRAM_BOT_TOKEN"
+    token_file_env: str = "TELEGRAM_BOT_TOKEN_FILE"
+    token_credential: str = "telegram_bot_token"
     poll_timeout: int = 30
     max_download_bytes: int = 20_000_000
     max_incoming_seconds: float = 300.0
@@ -304,8 +306,16 @@ def validate_config(config: Config) -> None:
         config.codec,
         config.models,
     )
-    if not (0 <= t.chat_id and 0 <= t.user_id and t.token_env):
-        raise ValueError("Use private chat/user IDs and a nonempty token_env")
+    if not (0 <= t.chat_id and 0 <= t.user_id):
+        raise ValueError("Use nonnegative private chat/user IDs")
+    if (
+        not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t.token_env)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t.token_file_env)
+        or t.token_env == t.token_file_env
+    ):
+        raise ValueError("token_env and token_file_env must be distinct environment variable names")
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", t.token_credential):
+        raise ValueError("token_credential must be a credential filename without path separators")
     if not 1 <= t.poll_timeout <= 50:
         raise ValueError("poll_timeout must be between 1 and 50")
     _url(t.api_base_url, "telegram.api_base_url")

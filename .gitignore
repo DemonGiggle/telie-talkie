@@ -18,6 +18,8 @@ config.local.toml
 .env
 .env.*
 bot.env
+*.token
+*.cred
 *.sqlite3
 *.sqlite3-*
 *.ogg

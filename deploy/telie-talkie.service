@@ -5,23 +5,26 @@ After=network-online.target sound.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+Type=exec
 User=telie
 Group=telie
 SupplementaryGroups=audio
 WorkingDirectory=/opt/telie-talkie
-EnvironmentFile=/etc/telie-talkie/bot.env
+LoadCredential=telegram_bot_token:/etc/telie-talkie/bot.token
+UnsetEnvironment=TELEGRAM_BOT_TOKEN TELEGRAM_BOT_TOKEN_FILE
 Environment=PYTHONUNBUFFERED=1
 UMask=0077
 ExecStart=/opt/telie-talkie/.venv/bin/telie-talkie --config /etc/telie-talkie/config.toml run
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=15
+TimeoutStopSec=30
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/telie-talkie
+StateDirectory=telie-talkie
+StateDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

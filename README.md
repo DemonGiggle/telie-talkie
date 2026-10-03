@@ -103,7 +103,9 @@ Operational options include native audio format and channel routing, gains, hard
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `telegram.chat_id`, `telegram.user_id` | Unpaired | Both must match an incoming private message |
-| `telegram.token_env` | `TELEGRAM_BOT_TOKEN` | Environment variable containing the bot token |
+| `telegram.token_env` | `TELEGRAM_BOT_TOKEN` | Interactive environment variable containing the bot token |
+| `telegram.token_file_env` | `TELEGRAM_BOT_TOKEN_FILE` | Environment variable containing a mounted token file path |
+| `telegram.token_credential` | `telegram_bot_token` | Credential filename inside systemd's credential directory |
 | `audio.input_device`, `audio.output_device` | System defaults | PortAudio index or matching device name |
 | `audio.input_sample_rate`, `audio.input_channels` | `16000`, `1` | Native capture format, converted locally for detection |
 | `audio.input_channel` | `0` | Select a channel, or use `-1` to average channels |
@@ -139,7 +141,7 @@ Only stored messages survive a restart; an unfinished recording is not yet queue
 | `pair [--timeout SECONDS]` | Print one-time pairing instructions and matching IDs |
 | `doctor [--online] [--audio-check]` | Check dependencies, models, audio, and optionally Telegram |
 
-For startup, hardware calibration, and troubleshooting, follow the [deployment guide](docs/setup.md). A [systemd service](deploy/telie-talkie.service) provides automatic recovery.
+For startup, follow the [systemd installation guide](docs/systemd.md). The [service](deploy/telie-talkie.service) uses a dedicated account, a root-owned token supplied through systemd credentials, private persistent state, graceful shutdown, and automatic recovery. See the [device setup guide](docs/setup.md) for hardware calibration and troubleshooting.
 
 ### Development
 
@@ -150,7 +152,7 @@ ruff format --check src tests
 pytest -q
 ```
 
-Tests use fake audio and Telegram adapters for recording, playback suppression, authorization, FIFO retries, capacity, deduplication, and restart recovery. FFmpeg integration tests exercise real Opus, MP3, and AAC conversion. Optional [model tests](tests/test_models.py) use downloaded models without requiring a microphone.
+Tests use fake audio and Telegram adapters for recording, playback suppression, authorization, FIFO retries, capacity, deduplication, and restart recovery. FFmpeg integration tests exercise real Opus, MP3, and AAC conversion. Optional [model tests](tests/test_models.py) use downloaded models without requiring a microphone. On Linux with a running user systemd manager, `TELIE_TEST_SYSTEMD=1 pytest -q tests/test_service.py` also checks real credential delivery. Shutdown tests send SIGTERM and verify queue recovery.
 
 ```bash
 # After setup-models, include real keyword/VAD inference in the test run:

@@ -7,6 +7,7 @@ import math
 import os
 import secrets
 import shutil
+import signal
 import sys
 from pathlib import Path
 
@@ -44,10 +45,32 @@ def configure_logging(token: str, level: str = "INFO") -> None:
     logging.getLogger("httpcore").setLevel(logging.CRITICAL)
 
 
-def require_token(config: Config) -> str:
-    value = os.environ.get(config.telegram.token_env, "").strip()
-    if not value:
-        raise ValueError(f"Set the {config.telegram.token_env} environment variable")
+def require_token(config: Config, *, required: bool = True) -> str:
+    settings = config.telegram
+    file = os.environ.get(settings.token_file_env, "").strip()
+    credentials = os.environ.get("CREDENTIALS_DIRECTORY", "").strip()
+    if not file and credentials:
+        file = str(Path(credentials) / settings.token_credential)
+    if file:
+        try:
+            with Path(file).open("rb") as source:
+                raw = source.read(4097)
+            if len(raw) > 4096:
+                raise ValueError("Bot token file exceeds 4096 bytes")
+            value = raw.decode("utf-8").strip()
+        except (OSError, UnicodeError):
+            # Filesystem exceptions can include private paths; never log their details.
+            raise ValueError(
+                "Cannot read bot token file; check its path, access, and encoding"
+            ) from None
+    else:
+        value = os.environ.get(settings.token_env, "").strip()
+    if value and (len(value) > 4096 or any(c.isspace() or not c.isprintable() for c in value)):
+        raise ValueError("Bot token must be a single nonempty value without whitespace")
+    if not value and (required or file):
+        raise ValueError(
+            f"Provide a bot token with {settings.token_file_env} or {settings.token_env}"
+        )
     return value
 
 
@@ -102,7 +125,12 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
         report("Authorized private chat/user", True)
     except ValueError as error:
         report("Authorized private chat/user", False, str(error))
-    report("Bot token environment", bool(os.environ.get(config.telegram.token_env)))
+    token = ""
+    try:
+        token = require_token(config)
+        report("Bot token", True)
+    except ValueError as error:
+        report("Bot token", False, str(error))
     codec = FFmpegCodec(config=config.codec)
     if shutil.which(config.codec.executable):
         try:
@@ -187,7 +215,7 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
         telegram = None
         try:
             telegram = Telegram(
-                require_token(config), config=config.telegram, network=config.network
+                token or require_token(config), config=config.telegram, network=config.network
             )
             await telegram.call("getMe")
             report("Telegram bot authentication", True)
@@ -212,7 +240,7 @@ async def dispatch(args) -> int:
         print(sd.query_devices())
         return 0
     config = load_config(args.config)
-    token = os.environ.get(config.telegram.token_env, "").strip()
+    token = require_token(config, required=args.command in ("run", "pair"))
     configure_logging(token, config.logging.level)
     if args.command == "setup-models":
         with InstanceLock(config.storage.directory):
@@ -222,7 +250,7 @@ async def dispatch(args) -> int:
         return 0
     if args.command == "doctor":
         return 0 if await doctor(config, args.online, args.audio_check) else 1
-    telegram = Telegram(require_token(config), config=config.telegram, network=config.network)
+    telegram = Telegram(token, config=config.telegram, network=config.network)
     try:
         with InstanceLock(config.storage.directory):
             if args.command == "pair":
@@ -269,10 +297,25 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+async def run_command(args) -> int:
+    loop = asyncio.get_running_loop()
+    task = asyncio.current_task()
+    previous_handler = signal.getsignal(signal.SIGTERM)
+    loop.add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        return await dispatch(args)
+    except asyncio.CancelledError:
+        logging.info("Shutdown requested; queued messages will resume on next start")
+        return 0
+    finally:
+        loop.remove_signal_handler(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, previous_handler)
+
+
 def main() -> None:
     args = parser().parse_args()
     try:
-        code = asyncio.run(dispatch(args))
+        code = asyncio.run(run_command(args))
     except KeyboardInterrupt:
         code = 0
     except (ValueError, TelegramError, RuntimeError) as error:

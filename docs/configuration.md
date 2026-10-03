@@ -2,13 +2,13 @@
 
 All operational settings are listed, with defaults and comments, in [config.example.toml](../config.example.toml). Copy it to a local configuration file and edit the values for your device. Configuration is read at startup; restart the process or service after changing it. Omitted fields use defaults, so older configuration files remain valid. Unknown fields, incorrect types, non-finite numbers, and invalid combinations fail before the device starts.
 
-The token stays in an environment variable. Keep your actual configuration, audio, database, model downloads, and logs out of Git.
+The token is loaded from a systemd credential, a token file, or an environment variable; its value is never stored in TOML. Keep your actual configuration, audio, database, model downloads, and logs out of Git.
 
 ## Settings by table
 
 | Table | Controls |
 | --- | --- |
-| `telegram` | Authorized chat/user, token variable, API base URL, long-poll timeout, incoming size and duration limits |
+| `telegram` | Authorized chat/user, token source variable names and credential filename, API base URL, long-poll timeout, incoming size and duration limits |
 | `audio` | Devices, native rates, channels, channel selection, gains, hardware/processing blocks, buffers, latency, resampling quality, read timeout, speaker settling |
 | `tones` | Ready/error frequencies, duration, repeat counts, and spacing |
 | `detection` | Wake phrase, keyword thresholds/boosting, trailing blanks, beam paths, feature dimension, inference provider/device/threads, VAD thresholds/timing/buffer |
@@ -21,6 +21,18 @@ The token stays in an environment variable. Keep your actual configuration, audi
 | `pairing` | Code lifetime and random code length; `pair --timeout` overrides the configured lifetime |
 | `logging` | DEBUG, INFO, WARNING, ERROR, or CRITICAL; HTTP credential logging remains suppressed |
 | `storage` | State directory and combined compressed-audio budget, including partial downloads |
+
+## Bot token sources
+
+The app checks these sources in order:
+
+1. The file path in the variable named by `telegram.token_file_env` (default `TELEGRAM_BOT_TOKEN_FILE`), when nonempty.
+2. The file named by `telegram.token_credential` (default `telegram_bot_token`) inside systemd's `CREDENTIALS_DIRECTORY`, when that directory is provided.
+3. The value in the variable named by `telegram.token_env` (default `TELEGRAM_BOT_TOKEN`).
+
+An explicitly selected file or credential must be readable and valid; a failure never falls back to another source. Names must be valid distinct environment variable names, and the credential name must be a filename without path separators. A file contains only a single UTF-8 token and an optional final newline, at most 4096 bytes. Empty tokens, embedded whitespace, and control characters are rejected. Token read errors omit paths and contents.
+
+For deployment, use the supplied [systemd service and credential instructions](systemd.md). For other secret-file providers, set `TELEGRAM_BOT_TOKEN_FILE` to the mounted secret's path. The file path is configuration; keep the actual token out of command arguments and TOML. Changes take effect on restart.
 
 ## Native microphone rates and channels
 

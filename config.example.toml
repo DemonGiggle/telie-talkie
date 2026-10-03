@@ -3,6 +3,8 @@
 chat_id = 0 # Run `telie-talkie pair` and paste its output here.
 user_id = 0
 token_env = "TELEGRAM_BOT_TOKEN"
+token_file_env = "TELEGRAM_BOT_TOKEN_FILE" # Path to a token file; takes precedence over token_env.
+token_credential = "telegram_bot_token" # Filename supplied through systemd LoadCredential.
 poll_timeout = 30
 max_download_bytes = 20000000
 max_incoming_seconds = 300.0
