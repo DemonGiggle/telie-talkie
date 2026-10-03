@@ -1,0 +1,27 @@
+[Unit]
+Description=Telie Talkie voice intercom
+Wants=network-online.target
+After=network-online.target sound.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=telie
+Group=telie
+SupplementaryGroups=audio
+WorkingDirectory=/opt/telie-talkie
+EnvironmentFile=/etc/telie-talkie/bot.env
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+ExecStart=/opt/telie-talkie/.venv/bin/telie-talkie --config /etc/telie-talkie/config.toml run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/telie-talkie
+
+[Install]
+WantedBy=multi-user.target

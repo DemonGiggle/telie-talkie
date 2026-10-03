@@ -1,0 +1,41 @@
+# Copy to config.toml. Relative directories resolve beside this file.
+[telegram]
+chat_id = 0 # Run `telie-talkie pair` and paste its output here.
+user_id = 0
+token_env = "TELEGRAM_BOT_TOKEN"
+poll_timeout = 30
+max_download_bytes = 20000000
+max_incoming_seconds = 300.0
+
+[audio]
+# Omit devices to use PortAudio defaults, or set an index/name from `devices`.
+# input_device = "USB Audio"
+# output_device = "USB Audio"
+# Input is mono, 16000 Hz. Output can use a different hardware rate.
+output_sample_rate = 48000
+volume = 0.8
+beep_volume = 0.2
+settle_seconds = 0.2
+
+[detection]
+wake_phrase = "HELLO KITTY"
+keywords_score = 1.5
+keywords_threshold = 0.25
+num_trailing_blanks = 1
+vad_threshold = 0.5
+vad_min_speech_seconds = 0.128
+num_threads = 2
+
+[recording]
+speech_wait_seconds = 5.0
+silence_seconds = 1.5
+max_seconds = 60.0
+pre_roll_seconds = 0.256
+tail_seconds = 0.2
+
+[storage]
+directory = "state"
+max_audio_bytes = 536870912 # 512 MiB, including partial downloads
+
+[models]
+directory = "models"

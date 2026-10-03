@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "telie-talkie"
+version = "0.1.0"
+description = "A local wake-word voice intercom for one Telegram user"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx==0.28.1",
+  "numpy==2.2.6",
+  "sounddevice==0.5.6",
+  "sherpa-onnx==1.13.8",
+  "sentencepiece==0.2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.10"]
+
+[project.scripts]
+telie-talkie = "telegram_talkie.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/telegram_talkie"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src", "tests", "docs", "deploy", ".github", ".gitignore",
+  "pyproject.toml", "uv.lock", "README.md", "LICENSE", "config.example.toml",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["ASYNC109", "ASYNC240"] # Bounded local file I/O is intentional; timers use asyncio.
