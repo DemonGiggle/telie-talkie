@@ -5,18 +5,19 @@ from pathlib import Path
 
 import numpy as np
 
+from .config import MODEL_SAMPLE_RATE, CodecConfig
+
 
 class CodecError(Exception):
     pass
 
 
 class FFmpegCodec:
-    def __init__(self, executable: str = "ffmpeg"):
-        self.executable = executable
+    def __init__(self, executable: str | None = None, config: CodecConfig | None = None):
+        self.config = config or CodecConfig()
+        self.executable = executable if executable is not None else self.config.executable
 
-    async def _convert(
-        self, args: list[str], max_bytes: int, data: bytes | None = None, timeout: float = 45
-    ) -> bytes:
+    async def _convert(self, args: list[str], max_bytes: int, data: bytes | None = None) -> bytes:
         process = await asyncio.create_subprocess_exec(
             self.executable,
             "-hide_banner",
@@ -42,8 +43,8 @@ class FFmpegCodec:
         feeder = asyncio.create_task(feed())
         output = bytearray()
         try:
-            async with asyncio.timeout(timeout):
-                while chunk := await process.stdout.read(65536):
+            async with asyncio.timeout(self.config.timeout_seconds):
+                while chunk := await process.stdout.read(self.config.chunk_bytes):
                     if len(output) + len(chunk) > max_bytes:
                         raise CodecError("audio exceeds the decoded duration or output limit")
                     output.extend(chunk)
@@ -61,7 +62,7 @@ class FFmpegCodec:
             feeder.cancel()
             await asyncio.gather(feeder, return_exceptions=True)
 
-    async def encode(self, samples: np.ndarray, sample_rate: int = 16000) -> bytes:
+    async def encode(self, samples: np.ndarray, sample_rate: int = MODEL_SAMPLE_RATE) -> bytes:
         return await self._convert(
             [
                 "-f",
@@ -72,17 +73,25 @@ class FFmpegCodec:
                 "1",
                 "-i",
                 "pipe:0",
+                "-ar",
+                str(self.config.sample_rate),
                 "-c:a",
                 "libopus",
                 "-b:a",
-                "24k",
+                str(self.config.bitrate_bps),
                 "-application",
-                "voip",
+                self.config.application,
+                "-frame_duration",
+                str(self.config.frame_duration_ms),
+                "-compression_level",
+                str(self.config.complexity),
+                "-threads",
+                str(self.config.threads),
                 "-f",
                 "ogg",
                 "pipe:1",
             ],
-            max_bytes=2_000_000,
+            max_bytes=self.config.max_encoded_bytes,
             data=samples.astype("<f4").tobytes(),
         )
 
@@ -93,7 +102,9 @@ class FFmpegCodec:
                 "-protocol_whitelist",
                 "file,pipe",
                 "-format_whitelist",
-                "ogg,mp3,mov,matroska,webm,wav,flac,aac,amr",
+                ",".join(self.config.allowed_input_formats),
+                "-threads",
+                str(self.config.threads),
                 "-i",
                 str(path),
                 "-map",

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -33,6 +35,14 @@ def test_limit_is_exact_even_when_last_frame_straddles_it():
         recording.feed(chunk, True)
     assert recording.done
     assert len(recording.result()) == 60 * 16000
+
+
+def test_recording_limit_can_extend_beyond_one_minute():
+    recording = Recording(replace(RecordingConfig(), max_seconds=120))
+    for chunk in frames(1, 121):
+        recording.feed(chunk, True)
+    assert recording.done
+    assert len(recording.result()) == 120 * 16000
 
 
 def test_pre_roll_keeps_speech_onset_while_vad_confirms():

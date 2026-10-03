@@ -16,7 +16,7 @@ from . import __version__
 from .app import Talkie, backoff
 from .audio import SoundDeviceAudio, tone
 from .codec import FFmpegCodec
-from .config import Config, load_config
+from .config import MODEL_SAMPLE_RATE, Config, PairingConfig, RetryConfig, load_config
 from .models import LocalDetector, check_models, setup_models
 from .storage import InstanceLock, Store
 from .telegram import Telegram, TelegramError, pairing_ids
@@ -34,11 +34,11 @@ class RedactSecrets(logging.Filter):
         return True
 
 
-def configure_logging(token: str) -> None:
+def configure_logging(token: str, level: str = "INFO") -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     handler.addFilter(RedactSecrets(token))
-    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
+    logging.basicConfig(level=level, handlers=[handler], force=True)
     # HTTP request logging contains the token as part of the Telegram URL.
     logging.getLogger("httpx").setLevel(logging.CRITICAL)
     logging.getLogger("httpcore").setLevel(logging.CRITICAL)
@@ -51,10 +51,19 @@ def require_token(config: Config) -> str:
     return value
 
 
-async def pair(telegram, timeout: float = 300, output=print) -> tuple[int, int]:
-    if not math.isfinite(timeout) or not 0 < timeout <= 900:
-        raise ValueError("Pairing timeout must be between 0 and 900 seconds")
-    code = secrets.token_hex(12)
+async def pair(
+    telegram,
+    timeout: float | None = None,
+    output=print,
+    *,
+    settings: PairingConfig | None = None,
+    retry: RetryConfig | None = None,
+) -> tuple[int, int]:
+    settings = settings or PairingConfig()
+    timeout = timeout if timeout is not None else settings.timeout_seconds
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Pairing timeout must be positive and finite")
+    code = secrets.token_hex(settings.code_bytes)
     output(f"Send this once in a PRIVATE chat to your bot: /pair {code}")
     output(f"Code expires in {int(timeout)} seconds. Keep the runtime stopped while pairing.")
     offset = 0
@@ -66,7 +75,7 @@ async def pair(telegram, timeout: float = 300, output=print) -> tuple[int, int]:
                     updates = await telegram.updates(offset)
                 except TelegramError as error:
                     logging.warning("Pairing poll will retry: %s", error)
-                    await asyncio.sleep(backoff(attempts, error.retry_after))
+                    await asyncio.sleep(backoff(attempts, error.retry_after, retry))
                     attempts += 1
                     continue
                 attempts = 0
@@ -94,8 +103,8 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
     except ValueError as error:
         report("Authorized private chat/user", False, str(error))
     report("Bot token environment", bool(os.environ.get(config.telegram.token_env)))
-    codec = FFmpegCodec()
-    if shutil.which("ffmpeg"):
+    codec = FFmpegCodec(config=config.codec)
+    if shutil.which(config.codec.executable):
         try:
             encoded = await codec.encode(np.zeros(1600, dtype=np.float32))
             # Temporary artifacts live in state, never next to source or config.
@@ -112,7 +121,7 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
     else:
         report("FFmpeg", False, "Install ffmpeg with libopus support")
     try:
-        check_models(config.models.directory)
+        check_models(config.models)
         with InstanceLock(config.storage.directory):
             LocalDetector(config)
         report("Keyword and Silero VAD model loading", True)
@@ -122,11 +131,14 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
         import sounddevice as sd
 
         sd.check_input_settings(
-            device=config.audio.input_device, channels=1, dtype="float32", samplerate=16000
+            device=config.audio.input_device,
+            channels=config.audio.input_channels,
+            dtype="float32",
+            samplerate=config.audio.input_sample_rate,
         )
         sd.check_output_settings(
             device=config.audio.output_device,
-            channels=1,
+            channels=config.audio.output_channels,
             dtype="float32",
             samplerate=config.audio.output_sample_rate,
         )
@@ -139,11 +151,23 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
             with InstanceLock(config.storage.directory):
                 await audio.start()
                 audio.suspend()
-                await audio.play(tone(config.audio.output_sample_rate, config.audio.beep_volume))
+                await audio.play(
+                    tone(
+                        config.audio.output_sample_rate,
+                        config.audio.beep_volume,
+                        settings=config.tones,
+                    )
+                )
                 await asyncio.sleep(config.audio.settle_seconds)
                 audio.resume()
-                print("Speak for three seconds; the device will play your microphone recording.")
-                frames = [await audio.read() for _ in range(94)]
+                seconds = config.runtime.doctor_record_seconds
+                print(f"Speak for {seconds:g} seconds; the device will play your recording.")
+                frames, size = [], 0
+                target = int(seconds * MODEL_SAMPLE_RATE)
+                while size < target:
+                    chunk = (await audio.read())[: target - size]
+                    frames.append(chunk)
+                    size += len(chunk)
                 audio.suspend()
                 recorded = np.concatenate(frames)
                 encoded = await codec.encode(recorded)
@@ -152,7 +176,7 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
                 with tempfile.TemporaryDirectory(dir=config.storage.directory) as temp:
                     path = Path(temp) / "check.ogg"
                     path.write_bytes(encoded)
-                    decoded = await codec.decode(path, config.audio.output_sample_rate, 5)
+                    decoded = await codec.decode(path, config.audio.output_sample_rate, seconds + 1)
                 await audio.play(np.clip(decoded * config.audio.volume, -1, 1))
             report("Physical microphone/speaker loop", True)
         except Exception as error:
@@ -162,7 +186,9 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
     if online:
         telegram = None
         try:
-            telegram = Telegram(require_token(config), config.telegram.poll_timeout)
+            telegram = Telegram(
+                require_token(config), config=config.telegram, network=config.network
+            )
             await telegram.call("getMe")
             report("Telegram bot authentication", True)
             webhook = await telegram.call("getWebhookInfo")
@@ -187,20 +213,20 @@ async def dispatch(args) -> int:
         return 0
     config = load_config(args.config)
     token = os.environ.get(config.telegram.token_env, "").strip()
-    configure_logging(token)
+    configure_logging(token, config.logging.level)
     if args.command == "setup-models":
         with InstanceLock(config.storage.directory):
-            await setup_models(config.models.directory)
+            await setup_models(config.models, config.network)
             LocalDetector(config)
         print("Models ready; keyword and VAD loading verified.")
         return 0
     if args.command == "doctor":
         return 0 if await doctor(config, args.online, args.audio_check) else 1
-    telegram = Telegram(require_token(config), config.telegram.poll_timeout)
+    telegram = Telegram(require_token(config), config=config.telegram, network=config.network)
     try:
         with InstanceLock(config.storage.directory):
             if args.command == "pair":
-                await pair(telegram, args.timeout)
+                await pair(telegram, args.timeout, settings=config.pairing, retry=config.retry)
             else:
                 config.require_pairing()
                 store = Store(config.storage.directory, config.storage.max_audio_bytes)
@@ -214,7 +240,7 @@ async def dispatch(args) -> int:
                         telegram,
                         SoundDeviceAudio(config.audio),
                         detector,
-                        FFmpegCodec(),
+                        FFmpegCodec(config=config.codec),
                     ).run()
                 finally:
                     store.close()
@@ -232,11 +258,13 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("devices", help="List PortAudio input/output devices")
     commands.add_parser("setup-models", help="Download and verify local speech models")
     pairing = commands.add_parser("pair", help="Print IDs using a private one-time pairing code")
-    pairing.add_argument("--timeout", type=float, default=300)
+    pairing.add_argument(
+        "--timeout", type=float, default=None, help="Override pairing.timeout_seconds"
+    )
     check = commands.add_parser("doctor", help="Check dependencies, models, and audio settings")
     check.add_argument("--online", action="store_true", help="Also verify Telegram authentication")
     check.add_argument(
-        "--audio-check", action="store_true", help="Beep, record, and play three seconds"
+        "--audio-check", action="store_true", help="Beep, record, and play an audio check"
     )
     return root
 

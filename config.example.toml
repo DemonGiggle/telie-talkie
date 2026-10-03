@@ -6,13 +6,26 @@ token_env = "TELEGRAM_BOT_TOKEN"
 poll_timeout = 30
 max_download_bytes = 20000000
 max_incoming_seconds = 300.0
+api_base_url = "https://api.telegram.org" # Or an HTTP-compatible Bot API proxy.
 
 [audio]
 # Omit devices to use PortAudio defaults, or set an index/name from `devices`.
 # input_device = "USB Audio"
 # output_device = "USB Audio"
-# Input is mono, 16000 Hz. Output can use a different hardware rate.
+# Capture at the microphone's native rate; it is resampled to 16 kHz mono locally.
+input_sample_rate = 16000 # For a 48 kHz microphone, set 48000.
+input_channels = 1
+input_channel = 0 # Zero-based capture channel; -1 averages all input channels.
 output_sample_rate = 48000
+output_channels = 1 # Mono playback is duplicated across the selected output channels.
+block_size = 512 # Frames per hardware callback, in input_sample_rate units.
+processing_block_size = 512 # Frames handed to detection/recording, always at 16 kHz.
+buffer_blocks = 64 # Maximum queued hardware callbacks before reporting overflow.
+read_timeout_seconds = 1.0
+input_latency = "high" # "low", "high", or positive seconds (e.g. 0.05).
+output_latency = "high"
+resample_quality = "HQ" # QQ, LQ, MQ, HQ, or VHQ; higher quality can add latency.
+input_gain = 1.0 # Microphone gain; amplified samples are clipped to [-1, 1].
 volume = 0.8
 beep_volume = 0.2
 settle_seconds = 0.2
@@ -25,11 +38,19 @@ num_trailing_blanks = 1
 vad_threshold = 0.5
 vad_min_speech_seconds = 0.128
 num_threads = 2
+vad_num_threads = 0 # 0 uses num_threads.
+provider = "cpu" # cpu, cuda, or coreml; requires the matching runtime/hardware.
+device = 0 # Keyword detector's GPU index when using CUDA.
+feature_dim = 80 # Must match the selected keyword model.
+max_active_paths = 4
+vad_min_silence_seconds = 0.032 # Detector hangover, added before recorder silence timing.
+vad_max_speech_seconds = 0.0 # 0 uses recording.max_seconds + 1.
+vad_buffer_seconds = 65.0
 
 [recording]
 speech_wait_seconds = 5.0
 silence_seconds = 1.5
-max_seconds = 60.0
+max_seconds = 60.0 # May be increased; allow enough RAM, encoding time, and file capacity.
 pre_roll_seconds = 0.256
 tail_seconds = 0.2
 
@@ -39,3 +60,68 @@ max_audio_bytes = 536870912 # 512 MiB, including partial downloads
 
 [models]
 directory = "models"
+# Paths are relative to directory unless absolute. Use compatible English BPE
+# streaming transducer models and a sherpa-compatible Silero VAD model.
+encoder = "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+decoder = "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+joiner = "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+tokens = "tokens.txt"
+bpe_model = "bpe.model"
+vad = "silero_vad.onnx"
+# setup-models extracts files matching these basenames under kws_archive_root.
+kws_archive_url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2"
+kws_archive_root = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+vad_url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
+download_timeout_seconds = 120.0
+max_archive_bytes = 100000000
+max_vad_bytes = 20000000
+max_model_file_bytes = 30000000
+
+[tones]
+ready_frequency_hz = 1000.0
+error_frequency_hz = 440.0
+duration_seconds = 0.12
+ready_repeats = 1
+error_repeats = 2
+gap_seconds = 0.1
+
+[codec]
+executable = "ffmpeg" # Executable name or path; must include libopus support.
+bitrate_bps = 24000
+sample_rate = 16000 # Opus supports 8000, 12000, 16000, 24000, or 48000 Hz.
+application = "voip" # voip, audio, or lowdelay.
+frame_duration_ms = 20.0
+complexity = 10 # 0-10; smaller values use less CPU.
+threads = 0 # 0 lets FFmpeg choose.
+timeout_seconds = 45.0
+max_encoded_bytes = 2000000
+chunk_bytes = 65536
+allowed_input_formats = ["ogg", "mp3", "mov", "matroska", "webm", "wav", "flac", "aac", "amr"]
+
+[network]
+connect_timeout_seconds = 15.0
+read_timeout_seconds = 90.0 # Must exceed telegram.poll_timeout.
+write_timeout_seconds = 90.0
+pool_timeout_seconds = 90.0
+max_connections = 20
+max_keepalive_connections = 10
+chunk_bytes = 65536 # Telegram and model download chunks.
+
+[retry]
+initial_seconds = 1.0
+multiplier = 2.0
+max_seconds = 300.0 # Includes jitter; Telegram retry_after may require a longer wait.
+jitter_ratio = 0.25 # 0 disables jitter.
+permanent_error_seconds = 300.0 # Keep failed outgoing audio and retry after this delay.
+
+[runtime]
+queue_interval_seconds = 0.25
+notice_interval_seconds = 0.5
+doctor_record_seconds = 3.0
+
+[pairing]
+timeout_seconds = 300.0 # pair --timeout overrides this setting.
+code_bytes = 12 # 12-64 random bytes; retain sufficient pairing-code entropy.
+
+[logging]
+level = "INFO" # DEBUG, INFO, WARNING, ERROR, or CRITICAL; credentials stay redacted.

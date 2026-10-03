@@ -4,18 +4,18 @@
 
 Create a dedicated bot through [@BotFather](https://t.me/BotFather) with `/newbot`. Start its private chat before pairing. The bot must not share a polling connection with another application. `doctor --online` checks for an active webhook; remove a previously configured webhook through the Telegram Bot API before using long polling.
 
-Set the token in the environment variable named by `telegram.token_env`. Never paste it into a URL in a bug report, terminal log, or screenshot. Run `pair` with the runtime stopped, send the printed command privately, and configure both IDs. Pairing only accepts the exact random code and expires after five minutes. Use a dedicated new bot for initial pairing: pairing polls may acknowledge earlier unrelated updates while looking for the code.
+Set the token in the environment variable named by `telegram.token_env`. Never paste it into a URL in a bug report, terminal log, or screenshot. Run `pair` with the runtime stopped, send the printed command privately, and configure both IDs. Pairing only accepts the exact random code; its lifetime defaults to five minutes and is configurable. Use a dedicated new bot for initial pairing: pairing polls may acknowledge earlier unrelated updates while looking for the code.
 
 ## Audio checks and calibration
 
 1. Run `telie-talkie devices` and select the intended input and output. Device names usually survive reboots better than numeric indices. Where several devices share a name, use a more specific PortAudio name.
-2. Run `telie-talkie doctor --audio-check`. Hear the ready tone, speak for three seconds, and confirm the replay is clear. Input must support mono 16 kHz; output rate defaults to 48 kHz.
+2. Run `telie-talkie doctor --audio-check`. Hear the ready tone, speak for the configured check duration (three seconds by default), and confirm the replay is clear. Set the input rate and channels supported by the device; capture is normalized locally to 16 kHz mono. Output rate defaults to 48 kHz.
 3. Run `telie-talkie run`. Say the wake phrase clearly, wait for the beep and brief settling interval, then speak. Test at the normal distance and background noise level.
 4. Increase `keywords_threshold` if ordinary speech causes false triggers. Decrease it cautiously if the phrase rarely triggers. `keywords_score` controls keyword boosting; higher scores make the phrase easier to detect.
 5. Tune `vad_threshold` if noise counts as speech or quiet speech is missed. Keep pre-roll at least as long as the VAD minimum speech confirmation period.
 6. Send a voice note containing the wake phrase back to the device. Playback should not trigger a recording. Increase `audio.settle_seconds` if room echoes last beyond playback.
 
-If a USB microphone cannot run at 16 kHz directly, configure a Linux audio layer that provides that rate or use a compatible input. The app does not add microphone sample-rate conversion in V1. The service below uses an ALSA/PortAudio device available to the `audio` group; a desktop-only PulseAudio/PipeWire session may require a user service and its session environment instead.
+If a USB microphone exposes 44.1 or 48 kHz, set `audio.input_sample_rate` to that native rate; the app handles streaming resampling. The [configuration guide](configuration.md) includes stereo input, buffering, latency, slower CPU, and network examples. The service below uses an ALSA/PortAudio device available to the `audio` group; a desktop-only PulseAudio/PipeWire session may require a user service and its session environment instead.
 
 ## Run at startup
 
@@ -57,7 +57,7 @@ The service restarts after failures, retains queues, and permits writes only to 
 | Symptom | Check |
 | --- | --- |
 | PortAudio library missing | Install `libportaudio2` on Debian/Raspberry Pi OS |
-| Invalid input or sample rate | Verify device selection and 16 kHz mono support with `doctor` |
+| Invalid input or sample rate | Verify the configured hardware rate, channel count, and device with `doctor` |
 | Speaker silent | Check output device, mixer mute, amplifier power, and `audio.volume` |
 | Device available interactively but not in service | Check `audio` group access and ALSA versus session audio routing |
 | Missing model | Run `setup-models` using the same configuration as `run` |

@@ -20,6 +20,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg libportaudio2
       - run: python -m pip install -e '.[dev]'
+      - run: python -c "import sherpa_onnx, soxr; print('Speech runtime and resampler available')"
       - run: ruff check src tests
       - run: ruff format --check src tests
       - run: pytest -q

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import time
 
@@ -9,7 +10,7 @@ import numpy as np
 
 from .audio import tone
 from .codec import CodecError
-from .config import Config
+from .config import Config, RetryConfig
 from .recording import Recording
 from .storage import StorageFull, Store
 from .telegram import IncomingRejected, TelegramError
@@ -17,8 +18,16 @@ from .telegram import IncomingRejected, TelegramError
 log = logging.getLogger(__name__)
 
 
-def backoff(attempts: int, retry_after: float = 0) -> float:
-    return max(retry_after, min(300, 2 ** min(attempts, 9)) * random.uniform(1, 1.25))
+def backoff(attempts: int, retry_after: float = 0, settings: RetryConfig | None = None) -> float:
+    settings = settings or RetryConfig()
+    log_delay = min(
+        math.log(settings.max_seconds),
+        math.log(settings.initial_seconds) + max(0, attempts) * math.log(settings.multiplier),
+    )
+    delay = min(
+        settings.max_seconds, math.exp(log_delay) * random.uniform(1, 1 + settings.jitter_ratio)
+    )
+    return max(retry_after, delay)
 
 
 class Talkie:
@@ -57,7 +66,7 @@ class Talkie:
                 attempts = 0
             except TelegramError as error:
                 log.warning("Polling will retry: %s", error)
-                await asyncio.sleep(backoff(attempts, error.retry_after))
+                await asyncio.sleep(backoff(attempts, error.retry_after, self.config.retry))
                 attempts += 1
 
     async def prepare_once(self) -> bool:
@@ -87,7 +96,10 @@ class Talkie:
         except TelegramError as error:
             if error.retryable:
                 self.store.retry(
-                    "inbox", row, backoff(row["attempts"], error.retry_after), str(error)
+                    "inbox",
+                    row,
+                    backoff(row["attempts"], error.retry_after, self.config.retry),
+                    str(error),
                 )
             else:
                 self.store.finish("inbox", row, "Telegram cannot retrieve this file")
@@ -100,7 +112,7 @@ class Talkie:
     async def prepare_loop(self) -> None:
         while True:
             if not await self.prepare_once():
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(self.config.runtime.queue_interval_seconds)
 
     async def send_once(self) -> bool:
         row = self.store.head("outbox", ("pending", "sending"))
@@ -111,7 +123,11 @@ class Talkie:
             await self.telegram.send_voice(row["chat_id"], self.store.path(row["path"]))
         except TelegramError as error:
             # Even permanent send errors preserve audio for a configuration fix and retry.
-            delay = backoff(row["attempts"], error.retry_after) if error.retryable else 300
+            delay = (
+                backoff(row["attempts"], error.retry_after, self.config.retry)
+                if error.retryable
+                else self.config.retry.permanent_error_seconds
+            )
             self.store.retry("outbox", row, delay, str(error))
             log.warning("Voice upload retained for retry: %s", error)
         else:
@@ -122,7 +138,7 @@ class Talkie:
     async def send_loop(self) -> None:
         while True:
             if not await self.send_once():
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(self.config.runtime.queue_interval_seconds)
 
     async def notice_once(self) -> bool:
         row = self.store.head_notice()
@@ -131,7 +147,9 @@ class Talkie:
         try:
             await self.telegram.send_text(row["chat_id"], row["text"])
         except TelegramError as error:
-            self.store.retry("notices", row, backoff(row["attempts"], error.retry_after), "")
+            self.store.retry(
+                "notices", row, backoff(row["attempts"], error.retry_after, self.config.retry), ""
+            )
             log.warning("Error notification will retry: %s", error)
         else:
             self.store.finish("notices", row)
@@ -140,7 +158,7 @@ class Talkie:
     async def notice_loop(self) -> None:
         while True:
             if not await self.notice_once():
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(self.config.runtime.notice_interval_seconds)
 
     async def _resume(self) -> None:
         # Keep callbacks gated through speaker reverberation and detector reset.
@@ -177,7 +195,11 @@ class Talkie:
         self.audio.suspend()
         try:
             await self.audio.play(
-                tone(self.config.audio.output_sample_rate, self.config.audio.beep_volume)
+                tone(
+                    self.config.audio.output_sample_rate,
+                    self.config.audio.beep_volume,
+                    settings=self.config.tones,
+                )
             )
         finally:
             await self._resume()
@@ -215,6 +237,7 @@ class Talkie:
                         self.config.audio.output_sample_rate,
                         self.config.audio.beep_volume,
                         error=True,
+                        settings=self.config.tones,
                     )
                 )
         finally:

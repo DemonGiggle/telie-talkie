@@ -26,11 +26,12 @@ def test_real_bpe_keyword_is_hello_kitty(config):
     assert "<unk>" not in text
 
 
-async def test_real_models_threaded_silence_and_reset(config):
+@pytest.mark.parametrize("block_size", [128, 512, 1024])
+async def test_real_models_threaded_silence_and_reset(config, block_size):
     detector = LocalDetector(config)
     for _ in range(40):
-        assert not await detector.wake(np.zeros(512, dtype=np.float32))
-        assert not await detector.speech(np.zeros(512, dtype=np.float32))
+        assert not await detector.wake(np.zeros(block_size, dtype=np.float32))
+        assert not await detector.speech(np.zeros(block_size, dtype=np.float32))
     detector.reset()
     assert not await detector.wake(np.zeros(512, dtype=np.float32))
     assert not await detector.speech(np.zeros(512, dtype=np.float32))

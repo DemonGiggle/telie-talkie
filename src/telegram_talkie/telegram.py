@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 import httpx
 
+from .config import NetworkConfig, TelegramConfig
+
 
 class TelegramError(Exception):
     """A safe error that never contains request URLs, credentials, or response text."""
@@ -24,15 +26,35 @@ class IncomingRejected(Exception):
 
 
 class Telegram:
-    def __init__(self, token: str, poll_timeout: int = 30, client: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        token: str,
+        poll_timeout: int = 30,
+        client: httpx.AsyncClient | None = None,
+        *,
+        config: TelegramConfig | None = None,
+        network: NetworkConfig | None = None,
+    ):
         if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
             raise ValueError("The bot token has an invalid format")
-        self._base = f"https://api.telegram.org/bot{token}/"
-        self._files = f"https://api.telegram.org/file/bot{token}/"
-        self.poll_timeout = poll_timeout
+        settings = config or TelegramConfig(poll_timeout=poll_timeout)
+        self.network = network or NetworkConfig()
+        base = settings.api_base_url.rstrip("/")
+        self._base = f"{base}/bot{token}/"
+        self._files = f"{base}/file/bot{token}/"
+        self.poll_timeout = settings.poll_timeout
         self._owned = client is None
         self.client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(90, connect=15),
+            timeout=httpx.Timeout(
+                connect=self.network.connect_timeout_seconds,
+                read=self.network.read_timeout_seconds,
+                write=self.network.write_timeout_seconds,
+                pool=self.network.pool_timeout_seconds,
+            ),
+            limits=httpx.Limits(
+                max_connections=self.network.max_connections,
+                max_keepalive_connections=self.network.max_keepalive_connections,
+            ),
             follow_redirects=False,
         )
 
@@ -114,7 +136,7 @@ class Telegram:
                 if length and length.isdecimal() and int(length) > max_bytes:
                     raise IncomingRejected("file exceeds the download limit")
                 total = 0
-                async for chunk in response.aiter_bytes(65536):
+                async for chunk in response.aiter_bytes(self.network.chunk_bytes):
                     total += len(chunk)
                     if total > max_bytes:
                         raise IncomingRejected("file exceeds the download limit")

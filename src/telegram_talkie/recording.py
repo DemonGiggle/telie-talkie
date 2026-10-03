@@ -4,14 +4,13 @@ from collections import deque
 
 import numpy as np
 
-from .config import RecordingConfig
-from .models import SAMPLE_RATE
+from .config import MODEL_SAMPLE_RATE, RecordingConfig
 
 
 class Recording:
     """A sample-clock recorder, fed only with microphone frames after the ready beep."""
 
-    def __init__(self, config: RecordingConfig, sample_rate: int = SAMPLE_RATE):
+    def __init__(self, config: RecordingConfig, sample_rate: int = MODEL_SAMPLE_RATE):
         self.config = config
         self.sample_rate = sample_rate
         self.elapsed = 0

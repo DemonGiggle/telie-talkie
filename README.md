@@ -28,7 +28,7 @@ Say **“Hello Kitty”**, wait for the beep, and speak. Your bot sends the reco
 
 A Raspberry Pi 4/5 running **64-bit Linux**, Python **3.11+**, a compatible microphone and speaker, FFmpeg with Opus support, and a dedicated Telegram bot. A regular Linux computer also works.
 
-Microphone input must support **mono 16 kHz** through PortAudio. Speaker output defaults to **48 kHz** and is configurable. Run the audio check before relying on wake detection.
+Microphone capture rate, input channels, selected channel, buffering, and latency are configurable. Native **44.1/48 kHz** input is resampled locally to the detector's **16 kHz mono** format. Speaker output defaults to **48 kHz**, with selectable channels and latency. Run the audio check before relying on wake detection.
 
 ### Quick start
 
@@ -64,7 +64,7 @@ telie-talkie setup-models
 telie-talkie pair
 ```
 
-Send the printed `/pair <one-time-code>` command to the bot **in a private chat**. Paste the returned `chat_id` and `user_id` into the `[telegram]` section of your local `config.toml`. Pairing expires after five minutes and does not edit your configuration automatically.
+Send the printed `/pair <one-time-code>` command to the bot **in a private chat**. Paste the returned `chat_id` and `user_id` into the `[telegram]` section of your local `config.toml`. Pairing expires after five minutes by default and does not edit your configuration automatically.
 
 **4. Check your audio and start.**
 
@@ -90,19 +90,24 @@ flowchart LR
     I --> P[Speaker playback]
 ```
 
-The device listens with sherpa-onnx's **int8 GigaSpeech English keyword model**. Silero VAD detects speech locally. After the beep, it waits up to **5 seconds** for speech, stops after **1.5 seconds of silence**, and limits the whole recording window to **60 seconds**. Empty recordings are discarded. A short pre-roll preserves the beginning of speech while VAD confirms it; the wake phrase and beep are excluded.
+The device defaults to sherpa-onnx's **int8 GigaSpeech English keyword model**. Silero VAD detects speech locally. By default, it waits up to **5 seconds** for speech after the beep, stops after **1.5 seconds of silence**, and limits the whole recording window to **60 seconds**. These timings and the model files can be changed in configuration. Empty recordings are discarded. A short pre-roll preserves the beginning of speech while VAD confirms it; the wake phrase and beep are excluded.
 
 FFmpeg creates **OGG/Opus** recordings for Telegram's `sendVoice` API. Incoming messages are received through long polling and saved as durable work before the next polling offset acknowledges them. A separate download worker validates incoming media before playback. Recording and playback share one audio loop; network work continues independently.
 
 ### Configuration
 
-See the commented [example configuration](config.example.toml). Relative storage and model paths resolve beside the TOML file. Use an alternative file with `telie-talkie --config /path/to/config.toml run`.
+The commented [example configuration](config.example.toml) lists every setting. Existing configuration files continue to work; omitted settings use defaults. Relative storage and model directories resolve beside the TOML file, and individual model paths resolve inside the model directory. Use an alternative file with `telie-talkie --config /path/to/config.toml run`.
+
+Operational options include native audio format and channel routing, gains, hardware and processing block sizes, buffers, latency, tone pitch and duration, Opus encoding, network and conversion timeouts, retry policy, worker intervals, pairing, model selection, and log level. See the [configuration guide](docs/configuration.md) for examples and compatibility requirements.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `telegram.chat_id`, `telegram.user_id` | Unpaired | Both must match an incoming private message |
 | `telegram.token_env` | `TELEGRAM_BOT_TOKEN` | Environment variable containing the bot token |
 | `audio.input_device`, `audio.output_device` | System defaults | PortAudio index or matching device name |
+| `audio.input_sample_rate`, `audio.input_channels` | `16000`, `1` | Native capture format, converted locally for detection |
+| `audio.input_channel` | `0` | Select a channel, or use `-1` to average channels |
+| `audio.block_size`, `audio.buffer_blocks` | `512`, `64` | Hardware capture buffering |
 | `audio.volume`, `audio.beep_volume` | `0.8`, `0.2` | Playback and tone amplitude |
 | `detection.wake_phrase` | `HELLO KITTY` | English wake phrase, tokenized automatically |
 | `detection.keywords_threshold` | `0.25` | Increase to make triggering harder |
@@ -110,6 +115,10 @@ See the commented [example configuration](config.example.toml). Relative storage
 | `recording.speech_wait_seconds` | `5.0` | Wait for speech after the beep |
 | `recording.silence_seconds` | `1.5` | Silence needed to finish a recording |
 | `recording.max_seconds` | `60.0` | Maximum recording window |
+| `codec.bitrate_bps`, `codec.complexity` | `24000`, `10` | Voice quality, bandwidth, and encoding CPU use |
+| `network.*_timeout_seconds` | `15` connect, `90` others | Tune for slow or unreliable networks |
+| `retry.max_seconds` | `300.0` | Maximum retry backoff, including jitter |
+| `logging.level` | `INFO` | Diagnostic verbosity with credential redaction |
 | `storage.max_audio_bytes` | `536870912` | Audio budget, including partial downloads |
 | `telegram.max_download_bytes` | `20000000` | Incoming compressed file limit |
 | `telegram.max_incoming_seconds` | `300.0` | Incoming decoded duration limit |

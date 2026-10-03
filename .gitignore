@@ -8,6 +8,11 @@ dist/
 build/
 state/
 models/
+*.onnx
+*.model
+tokens.txt
+keywords.txt
+download-manifest.json
 config.toml
 config.local.toml
 .env
