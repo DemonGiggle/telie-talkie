@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from telegram_talkie.cli import RedactSecrets, pair
+from telegram_talkie.cli import RedactSecrets, dispatch, pair, parser
 from telegram_talkie.telegram import IncomingRejected, Telegram, TelegramError, pairing_ids
 
 
@@ -140,4 +140,23 @@ async def test_pairing_requires_correct_private_code_and_prints_matching_ids(mon
     bot.batch = [bad, good]
     output = []
     assert await pair(bot, 1, output.append) == (101, 101)
-    assert "chat_id = 101\nuser_id = 101" in output
+    assert "user_id = 101" in output
+    assert not any(line.startswith("chat_id =") for line in output)
+
+
+async def test_known_id_shortcut_needs_no_config_token_or_network(monkeypatch, capsys):
+    def unexpected(*args, **kwargs):
+        pytest.fail("Known user ID setup must not load configuration or contact Telegram")
+
+    monkeypatch.setattr("telegram_talkie.cli.load_config", unexpected)
+    monkeypatch.setattr("telegram_talkie.cli.Telegram", unexpected)
+    args = parser().parse_args(["pair", "--user-id", "101"])
+    assert await dispatch(args) == 0
+    output = capsys.readouterr().out
+    assert "user_id = 101" in output and "tap Start" in output
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+async def test_known_id_shortcut_rejects_nonpositive_ids(value):
+    with pytest.raises(ValueError, match="user ID must be positive"):
+        await dispatch(parser().parse_args(["pair", "--user-id", value]))

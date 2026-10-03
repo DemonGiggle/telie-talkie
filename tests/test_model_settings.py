@@ -1,5 +1,6 @@
 import io
 import tarfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,7 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
         path = models.path(field)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fixture-model")
+    models.path("tokens").write_text("HEY 0\nBUDDY 1\n")
     calls = {}
 
     class Keyword:
@@ -51,6 +53,14 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
         def reset(self):
             pass
 
+    class Tokenizer:
+        def __init__(self, model_file):
+            assert model_file == str(models.path("bpe_model"))
+
+        def encode(self, phrase, out_type):
+            assert phrase == "HEY BUDDY" and out_type is str
+            return ["HEY", "BUDDY"]
+
     monkeypatch.setitem(
         sys.modules,
         "sherpa_onnx",
@@ -58,11 +68,14 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
             KeywordSpotter=Keyword, VadModelConfig=VadConfig, VoiceActivityDetector=Vad
         ),
     )
-    monkeypatch.setattr("telegram_talkie.models.keyword_text", lambda _: "fixture keyword\n")
+    monkeypatch.setitem(
+        sys.modules, "sentencepiece", SimpleNamespace(SentencePieceProcessor=Tokenizer)
+    )
     config = Config(
         models=models,
         storage=StorageConfig(tmp_path / "state"),
         detection=DetectionConfig(
+            wake_phrase="Hey Buddy",
             provider="cuda",
             device=2,
             num_threads=3,
@@ -78,6 +91,7 @@ def test_selected_model_files_and_detection_options_reach_runtime(tmp_path, monk
     keyword = calls["keyword"]
     assert keyword["encoder"] == str(models.path("encoder"))
     assert keyword["tokens"] == str(models.path("tokens"))
+    assert Path(keyword["keywords_file"]).read_text() == "HEY BUDDY @HEY_BUDDY\n"
     assert keyword["provider"] == "cuda" and keyword["device"] == 2
     assert keyword["feature_dim"] == 64 and keyword["max_active_paths"] == 6
     assert calls["vad"].silero_vad.model == str(models.path("vad"))

@@ -75,6 +75,16 @@ def require_token(config: Config, *, required: bool = True) -> str:
     return value
 
 
+def print_pairing_settings(chat_id: int, user_id: int, output=print) -> None:
+    output("Set this in the [telegram] table in your configuration:")
+    output(f"user_id = {user_id}")
+    if chat_id != user_id:
+        output(f"chat_id = {chat_id}")
+    else:
+        output("Omit chat_id or leave it at 0 to use your user ID for the private chat.")
+    output("Open your bot's private chat and tap Start before running the device.")
+
+
 async def pair(
     telegram,
     timeout: float | None = None,
@@ -105,8 +115,7 @@ async def pair(
                 attempts = 0
                 for update in sorted(updates, key=lambda x: x["update_id"]):
                     if ids := pairing_ids(update, code):
-                        output("Paste into the [telegram] table in your configuration:")
-                        output(f"chat_id = {ids[0]}\nuser_id = {ids[1]}")
+                        print_pairing_settings(*ids, output)
                         return ids
                     offset = max(offset, update["update_id"] + 1)
     except TimeoutError:
@@ -235,6 +244,11 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
 
 
 async def dispatch(args) -> int:
+    if args.command == "pair" and args.user_id is not None:
+        if args.user_id <= 0:
+            raise ValueError("The Telegram user ID must be positive")
+        print_pairing_settings(args.user_id, args.user_id)
+        return 0
     if args.command == "devices":
         import sounddevice as sd
 
@@ -260,7 +274,7 @@ async def dispatch(args) -> int:
                 config.require_pairing()
                 store = Store(config.storage.directory, config.storage.max_audio_bytes)
                 try:
-                    store.bind(token, config.telegram.chat_id, config.telegram.user_id)
+                    store.bind(token, config.telegram.resolved_chat_id, config.telegram.user_id)
                     store.recover()
                     detector = LocalDetector(config)
                     await Talkie(
@@ -286,8 +300,14 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("run", help="Start the voice intercom")
     commands.add_parser("devices", help="List PortAudio input/output devices")
     commands.add_parser("setup-models", help="Download and verify local speech models")
-    pairing = commands.add_parser("pair", help="Print IDs using a private one-time pairing code")
-    pairing.add_argument(
+    pairing = commands.add_parser("pair", help="Configure a known user ID or discover it privately")
+    pairing_options = pairing.add_mutually_exclusive_group()
+    pairing_options.add_argument(
+        "--user-id",
+        type=int,
+        help="Print settings for a known numeric user ID without contacting Telegram",
+    )
+    pairing_options.add_argument(
         "--timeout", type=float, default=None, help="Override pairing.timeout_seconds"
     )
     check = commands.add_parser("doctor", help="Check dependencies, models, and audio settings")

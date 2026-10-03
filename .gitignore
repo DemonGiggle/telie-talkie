@@ -36,3 +36,6 @@ bot.env
 .agents/
 .aws/
 .codex/
+*.swp
+*.swo
+*~

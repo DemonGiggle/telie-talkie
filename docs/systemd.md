@@ -56,9 +56,21 @@ sudo chmod 0600 /etc/telie-talkie/bot.token
 sudoedit /etc/telie-talkie/bot.token
 ```
 
-## Pair and check as the service account
+## Set your user ID and check as the service account
 
-Start the bot's private chat in Telegram. Keep the main service stopped while pairing. Use a temporary systemd unit to pass the same credential and run as the same account:
+Start the bot's private chat in Telegram. If you know your numeric user ID, set only `user_id` in the existing `[telegram]` table of `/etc/telie-talkie/config.toml` with `sudoedit` (replace this example ID):
+
+```toml
+[telegram]
+user_id = 123456789
+```
+
+Omit `chat_id` or leave it at `0`; the app uses your user ID for the private chat. No code exchange or temporary pairing service is needed. Restart an already-running service after changing configuration.
+
+<details>
+<summary>If you do not know your user ID, discover it through your bot</summary>
+
+Keep the main service stopped while discovering the ID. Use a temporary systemd unit to pass the same credential and run as the same account:
 
 ```bash
 sudo systemd-run --unit=telie-talkie-pair --collect --wait --pty \
@@ -70,7 +82,11 @@ sudo systemd-run --unit=telie-talkie-pair --collect --wait --pty \
   --config /etc/telie-talkie/config.toml pair
 ```
 
-Send the printed pairing command privately to the bot. Paste the returned chat/user IDs into `/etc/telie-talkie/config.toml` with `sudoedit`. Then check Telegram and the physical microphone/speaker using a temporary unit:
+Send the printed pairing command privately to the bot. Paste the returned `user_id` into `/etc/telie-talkie/config.toml` with `sudoedit`.
+
+</details>
+
+Then check Telegram and the physical microphone/speaker using a temporary unit:
 
 ```bash
 sudo systemd-run --unit=telie-talkie-doctor --collect --wait --pty \

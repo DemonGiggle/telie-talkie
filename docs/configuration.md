@@ -8,7 +8,7 @@ The token is loaded from a systemd credential, a token file, or an environment v
 
 | Table | Controls |
 | --- | --- |
-| `telegram` | Authorized chat/user, token source variable names and credential filename, API base URL, long-poll timeout, incoming size and duration limits |
+| `telegram` | Authorized user and optional chat override, token source variable names and credential filename, API base URL, long-poll timeout, incoming size and duration limits |
 | `audio` | Devices, native rates, channels, channel selection, gains, hardware/processing blocks, buffers, latency, resampling quality, read timeout, speaker settling |
 | `tones` | Ready/error frequencies, duration, repeat counts, and spacing |
 | `detection` | Wake phrase, keyword thresholds/boosting, trailing blanks, beam paths, feature dimension, inference provider/device/threads, VAD thresholds/timing/buffer |
@@ -18,9 +18,17 @@ The token is loaded from a systemd credential, a token file, or an environment v
 | `retry` | Initial delay, multiplier, cap, jitter, and delay for retained outgoing audio after permanent API errors |
 | `runtime` | Queue-check intervals, notification interval, and doctor recording duration |
 | `models` | Model directory and individual files, download URLs, archive layout, transfer timeout, and download/extraction limits |
-| `pairing` | Code lifetime and random code length; `pair --timeout` overrides the configured lifetime |
+| `pairing` | Optional ID discovery code lifetime and length; `pair --user-id` skips discovery |
 | `logging` | DEBUG, INFO, WARNING, ERROR, or CRITICAL; HTTP credential logging remains suppressed |
 | `storage` | State directory and combined compressed-audio budget, including partial downloads |
+
+## Authorize one user
+
+Set `telegram.user_id` to your numeric Telegram user ID. The app uses this as the private chat ID when `telegram.chat_id` is omitted or `0`, following Telegram's [user dialog ID mapping](https://core.telegram.org/api/bots/ids#user-ids). An explicit positive `chat_id` is still supported for existing configurations. Runtime checks continue to require a private chat, the resolved chat ID, and the configured sender ID.
+
+You can skip the code exchange when the ID is known. `pair --user-id ID` prints the local configuration setting without reading a configuration file, accessing a bot token, or contacting Telegram. It does not save the setting. Without `--user-id`, `pair` discovers the ID through the existing one-time private code flow. Start the bot's private chat before using the device.
+
+The same bot/user/chat binding preserves existing queues when changing from an explicit matching `chat_id` to the derived default. Changing the authorized user or destination still requires a separate state directory.
 
 ## Bot token sources
 
@@ -33,6 +41,17 @@ The app checks these sources in order:
 An explicitly selected file or credential must be readable and valid; a failure never falls back to another source. Names must be valid distinct environment variable names, and the credential name must be a filename without path separators. A file contains only a single UTF-8 token and an optional final newline, at most 4096 bytes. Empty tokens, embedded whitespace, and control characters are rejected. Token read errors omit paths and contents.
 
 For deployment, use the supplied [systemd service and credential instructions](systemd.md). For other secret-file providers, set `TELEGRAM_BOT_TOKEN_FILE` to the mounted secret's path. The file path is configuration; keep the actual token out of command arguments and TOML. Changes take effect on restart.
+
+## Wake phrase
+
+Set the phrase in the existing `[detection]` table:
+
+```toml
+[detection]
+wake_phrase = "HEY BUDDY"
+```
+
+Use English letters and spaces. The app normalizes case and spacing, checks the phrase against the selected model's vocabulary, and generates the keyword file automatically. Restart the app after changing it; for systemd, run `sudo systemctl restart telie-talkie.service`. The default remains `HELLO KITTY`. Model accuracy depends on the phrase, microphone, and room, so repeat the wake checks after changing it and tune `keywords_threshold` or `keywords_score` as needed.
 
 ## Native microphone rates and channels
 
@@ -123,7 +142,7 @@ VAD hangover (`vad_min_silence_seconds`) adds detector latency before the record
 
 ## Protocol and model requirements
 
-Some values describe compatibility requirements rather than device tuning. The Silero wrapper requires 16 kHz mono processing with a 512-sample internal VAD window; selectable capture rates are resampled to this format, and processing blocks are buffered by the detector as needed. Audio samples use float32 internally. Outgoing voice files remain OGG/Opus, playback and recording remain serialized, and runtime authorization requires both configured IDs in a private chat.
+Some values describe compatibility requirements rather than device tuning. The Silero wrapper requires 16 kHz mono processing with a 512-sample internal VAD window; selectable capture rates are resampled to this format, and processing blocks are buffered by the detector as needed. Audio samples use float32 internally. Outgoing voice files remain OGG/Opus, playback and recording remain serialized, and runtime authorization requires the configured user and resolved destination IDs in a private chat.
 
 The hosted Telegram API retains its download and polling limits. An alternative `telegram.api_base_url` must implement the same Bot API methods and HTTP file-download paths, and may configure a larger download budget. Absolute filesystem paths returned by a server's local mode are not opened by the app. URL credentials are rejected. Pairing codes retain at least 12 random bytes, and credentials are redacted at every selectable log level.
 

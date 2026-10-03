@@ -1,6 +1,7 @@
 """Opt in after setup-models: TELIE_TEST_MODELS=1 pytest tests/test_models.py."""
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -20,14 +21,17 @@ def config():
     return load_config(Path(__file__).parents[1] / "config.example.toml")
 
 
-def test_real_bpe_keyword_is_hello_kitty(config):
+@pytest.mark.parametrize("phrase", ["HELLO KITTY", "HEY BUDDY", "WAKE UP"])
+def test_real_bpe_keyword_uses_configured_phrase(config, phrase):
+    config = replace(config, detection=replace(config.detection, wake_phrase=phrase))
     text = keyword_text(config)
-    assert text.endswith("@HELLO_KITTY\n")
+    assert text.endswith("@" + phrase.replace(" ", "_") + "\n")
     assert "<unk>" not in text
 
 
 @pytest.mark.parametrize("block_size", [128, 512, 1024])
 async def test_real_models_threaded_silence_and_reset(config, block_size):
+    config = replace(config, detection=replace(config.detection, wake_phrase="HEY BUDDY"))
     detector = LocalDetector(config)
     for _ in range(40):
         assert not await detector.wake(np.zeros(block_size, dtype=np.float32))

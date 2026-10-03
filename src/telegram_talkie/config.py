@@ -27,6 +27,10 @@ class TelegramConfig:
     max_incoming_seconds: float = 300.0
     api_base_url: str = "https://api.telegram.org"
 
+    @property
+    def resolved_chat_id(self) -> int:
+        return self.chat_id or self.user_id
+
 
 @dataclass(frozen=True)
 class NetworkConfig:
@@ -200,8 +204,8 @@ class Config:
     codec: CodecConfig = CodecConfig()
 
     def require_pairing(self) -> None:
-        if self.telegram.chat_id <= 0 or self.telegram.user_id <= 0:
-            raise ValueError("Set positive private chat_id and user_id using the pair command")
+        if self.telegram.resolved_chat_id <= 0 or self.telegram.user_id <= 0:
+            raise ValueError("Set a positive telegram.user_id, or discover it using pair")
 
 
 def _table(cls, values: dict, base: Path):

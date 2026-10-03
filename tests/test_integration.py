@@ -1,10 +1,12 @@
 import shutil
+from dataclasses import replace
 
 import httpx
 import numpy as np
 import pytest
 
 from telegram_talkie.codec import FFmpegCodec
+from telegram_talkie.config import TelegramConfig
 from telegram_talkie.telegram import Telegram
 
 from .conftest import frames, message
@@ -12,6 +14,9 @@ from .conftest import frames, message
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg is not installed")
 async def test_telegram_voice_audio_and_device_recording_round_trip(rig):
+    rig.config = replace(rig.config, telegram=TelegramConfig(user_id=101))
+    rig.config.require_pairing()
+    rig.store.bind("123:fixture-only", rig.config.telegram.resolved_chat_id, 101)
     codec = FFmpegCodec()
     blob = await codec.encode(np.ones(1600, dtype=np.float32) * 0.05)
     upload_bodies = []
@@ -24,6 +29,7 @@ async def test_telegram_voice_audio_and_device_recording_round_trip(rig):
             result = {"file_path": "voice/test.ogg", "file_size": len(blob)}
         elif operation == "sendVoice":
             upload_bodies.append(request.content)
+            assert b'name="chat_id"\r\n\r\n101' in request.content
             result = {"message_id": 1}
         else:
             return httpx.Response(200, content=blob)

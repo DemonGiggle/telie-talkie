@@ -56,7 +56,7 @@ class Talkie:
         updates = await self.telegram.updates(self.store.offset)
         t = self.config.telegram
         self.store.ingest(
-            updates, t.chat_id, t.user_id, t.max_download_bytes, t.max_incoming_seconds
+            updates, t.resolved_chat_id, t.user_id, t.max_download_bytes, t.max_incoming_seconds
         )
 
     async def poll_loop(self) -> None:
@@ -225,12 +225,12 @@ class Talkie:
                 return
             try:
                 encoded = await self.codec.encode(samples)
-                row_id = self.store.enqueue_voice(self.config.telegram.chat_id, encoded)
+                row_id = self.store.enqueue_voice(self.config.telegram.resolved_chat_id, encoded)
                 log.info("Recording queued (queue %s)", row_id)
             except (StorageFull, CodecError) as error:
                 log.warning("Recording could not be queued: %s", error)
                 self.store.notice(
-                    self.config.telegram.chat_id,
+                    self.config.telegram.resolved_chat_id,
                     f"The device could not store a new recording: {error}.",
                 )
                 await self.audio.play(

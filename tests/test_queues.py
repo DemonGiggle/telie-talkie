@@ -1,8 +1,10 @@
 import asyncio
+from dataclasses import replace
 
 import pytest
 
 from telegram_talkie.codec import CodecError
+from telegram_talkie.config import TelegramConfig
 from telegram_talkie.storage import InstanceLock, StorageFull, Store
 from telegram_talkie.telegram import TelegramError
 
@@ -57,6 +59,18 @@ async def test_authorization_private_chat_both_ids_and_media_types(rig):
     await rig.prepare_once()
     await rig.prepare_once()
     assert rig.telegram.downloads == ["5", "6"]
+
+
+async def test_user_id_only_still_rejects_other_senders_chats_and_groups(rig):
+    rig.config = replace(rig.config, telegram=TelegramConfig(user_id=101))
+    group = message(3)
+    group["message"]["chat"]["type"] = "group"
+    rig.telegram.batch = [message(1, user_id=999), message(2, chat_id=999), group, message(4)]
+    await rig.poll_once()
+    assert rig.store.offset == 5
+    assert rig.store.db.execute("SELECT COUNT(*) FROM inbox").fetchone()[0] == 1
+    await rig.prepare_once()
+    assert rig.telegram.downloads == ["4"]
 
 
 async def test_duplicate_updates_and_acknowledgment_after_durable_ingest(rig):

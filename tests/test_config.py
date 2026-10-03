@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from telegram_talkie.config import Config, load_config, tomllib
+from telegram_talkie.config import Config, TelegramConfig, load_config, tomllib
 
 
 def test_example_config_and_relative_paths():
@@ -24,6 +24,8 @@ def test_example_config_and_relative_paths():
         "[audio]\nvolume=2",
         "[telegram]\nmax_download_bytes=20000001",
         "[telegram]\nuser_id='101'",
+        "[telegram]\nuser_id=-1",
+        "[telegram]\nchat_id=-1",
         "[telegram]\ntoken_file_env=''",
         "[telegram]\ntoken_env='INVALID NAME'",
         "[telegram]\ntoken_file_env='TELEGRAM_BOT_TOKEN'",
@@ -89,6 +91,37 @@ def test_every_configuration_field_is_documented_in_example():
     for table in fields(Config):
         defaults = getattr(Config(), table.name)
         listed = set(raw[table.name])
+        if table.name == "telegram":
+            listed.add("chat_id")  # Commented out to default to the private user ID.
         if table.name == "audio":
             listed |= {"input_device", "output_device"}  # Commented out to select defaults.
         assert listed == {field.name for field in fields(defaults)}, table.name
+
+
+@pytest.mark.parametrize("chat_setting", ["", "\nchat_id=0", "\nchat_id=101"])
+def test_only_user_id_is_needed_for_private_chat(tmp_path, chat_setting):
+    path = tmp_path / "config.toml"
+    path.write_text("[telegram]\nuser_id=101" + chat_setting)
+    config = load_config(path)
+    config.require_pairing()
+    assert config.telegram.resolved_chat_id == 101
+
+
+def test_explicit_chat_override_still_works_and_derived_id_tracks_user():
+    from dataclasses import replace
+
+    settings = TelegramConfig(user_id=101)
+    assert replace(settings, user_id=202).resolved_chat_id == 202
+    assert TelegramConfig(user_id=101, chat_id=202).resolved_chat_id == 202
+
+
+@pytest.mark.parametrize("settings", [TelegramConfig(), TelegramConfig(chat_id=101)])
+def test_user_id_is_still_required(settings):
+    with pytest.raises(ValueError, match="telegram.user_id"):
+        Config(telegram=settings).require_pairing()
+
+
+def test_custom_wake_phrase_is_loaded_from_settings(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[detection]\nwake_phrase="Hey Buddy"\n')
+    assert load_config(path).detection.wake_phrase == "Hey Buddy"

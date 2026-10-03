@@ -1,7 +1,7 @@
 # Copy to config.toml. Relative directories resolve beside this file.
 [telegram]
-chat_id = 0 # Run `telie-talkie pair` and paste its output here.
-user_id = 0
+user_id = 0 # Set your numeric Telegram user ID. Run `pair` if you do not know it.
+# chat_id = 0 # Optional override; omitted/0 uses user_id for the private chat.
 token_env = "TELEGRAM_BOT_TOKEN"
 token_file_env = "TELEGRAM_BOT_TOKEN_FILE" # Path to a token file; takes precedence over token_env.
 token_credential = "telegram_bot_token" # Filename supplied through systemd LoadCredential.
@@ -33,7 +33,7 @@ beep_volume = 0.2
 settle_seconds = 0.2
 
 [detection]
-wake_phrase = "HELLO KITTY"
+wake_phrase = "HELLO KITTY" # Change to your English wake phrase; restart the app/service afterward.
 keywords_score = 1.5
 keywords_threshold = 0.25
 num_trailing_blanks = 1

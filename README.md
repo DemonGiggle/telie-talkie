@@ -19,7 +19,7 @@ Say **“Hello Kitty”**, wait for the beep, and speak. Your bot sends the reco
 
 - **Hands-free sending.** Local keyword detection starts a recording; silence finishes it.
 - **Simple replies.** Telegram voice notes and audio files play automatically, in order.
-- **One trusted user.** A one-time private pairing code identifies the allowed chat and sender.
+- **One trusted user.** Set your numeric Telegram user ID to authorize your private chat.
 - **Resilient queues.** SQLite and local audio files survive outages and process restarts.
 - **Speaker-aware recording.** Microphone processing pauses during tones and playback.
 - **Predictable storage.** A configurable 512 MiB audio budget preserves existing queued messages.
@@ -57,14 +57,22 @@ export TELEGRAM_BOT_TOKEN
 
 Open your new bot's private chat and tap **Start**. Keep other pollers and webhooks disconnected from this dedicated bot.
 
-**3. Download models and pair.**
+**3. Download models and set your user ID.**
 
 ```bash
 telie-talkie setup-models
-telie-talkie pair
 ```
 
-Send the printed `/pair <one-time-code>` command to the bot **in a private chat**. Paste the returned `chat_id` and `user_id` into the `[telegram]` section of your local `config.toml`. Pairing expires after five minutes by default and does not edit your configuration automatically.
+Set your numeric Telegram user ID in the existing `[telegram]` table of `config.toml` (replace this example ID):
+
+```toml
+[telegram]
+user_id = 123456789
+```
+
+You can omit `chat_id`; the app uses your user ID for the private chat. This follows Telegram's [user dialog ID mapping](https://core.telegram.org/api/bots/ids#user-ids). `telie-talkie pair --user-id 123456789` prints the setting locally without needing a token or contacting Telegram. It does not edit your configuration.
+
+If you do not know your numeric ID, run `telie-talkie pair`, send its printed `/pair <one-time-code>` command privately to the bot, and copy the returned `user_id`. This optional discovery code expires after five minutes by default. Start the bot's private chat before running the device.
 
 **4. Check your audio and start.**
 
@@ -102,7 +110,8 @@ Operational options include native audio format and channel routing, gains, hard
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `telegram.chat_id`, `telegram.user_id` | Unpaired | Both must match an incoming private message |
+| `telegram.user_id` | Unpaired | Numeric ID of the one authorized Telegram user |
+| `telegram.chat_id` | Uses `user_id` | Optional override; private chat and sender must both match |
 | `telegram.token_env` | `TELEGRAM_BOT_TOKEN` | Interactive environment variable containing the bot token |
 | `telegram.token_file_env` | `TELEGRAM_BOT_TOKEN_FILE` | Environment variable containing a mounted token file path |
 | `telegram.token_credential` | `telegram_bot_token` | Credential filename inside systemd's credential directory |
@@ -138,7 +147,7 @@ Only stored messages survive a restart; an unfinished recording is not yet queue
 | `run` | Listen, record, poll, upload, and play replies |
 | `devices` | List microphone and speaker devices |
 | `setup-models` | Download models and verify they load |
-| `pair [--timeout SECONDS]` | Print one-time pairing instructions and matching IDs |
+| `pair [--user-id ID \| --timeout SECONDS]` | Print settings for a known ID, or discover it through a private one-time code |
 | `doctor [--online] [--audio-check]` | Check dependencies, models, audio, and optionally Telegram |
 
 For startup, follow the [systemd installation guide](docs/systemd.md). The [service](deploy/telie-talkie.service) uses a dedicated account, a root-owned token supplied through systemd credentials, private persistent state, graceful shutdown, and automatic recovery. See the [device setup guide](docs/setup.md) for hardware calibration and troubleshooting.

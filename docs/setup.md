@@ -4,9 +4,15 @@
 
 Create a dedicated bot through [@BotFather](https://t.me/BotFather) with `/newbot`. Start its private chat before pairing. The bot must not share a polling connection with another application. `doctor --online` checks for an active webhook; remove a previously configured webhook through the Telegram Bot API before using long polling.
 
-For interactive use, set the token in the environment variable named by `telegram.token_env`. A token file supplied through `telegram.token_file_env` is also supported. For unattended use, follow the [systemd credential setup](systemd.md#token-design). Never paste it into a URL in a bug report, terminal log, or screenshot. Run `pair` with the runtime stopped, send the printed command privately, and configure both IDs. Pairing only accepts the exact random code; its lifetime defaults to five minutes and is configurable. Use a dedicated new bot for initial pairing: pairing polls may acknowledge earlier unrelated updates while looking for the code.
+For interactive use, set the token in the environment variable named by `telegram.token_env`. A token file supplied through `telegram.token_file_env` is also supported. For unattended use, follow the [systemd credential setup](systemd.md#token-design). Never paste it into a URL in a bug report, terminal log, or screenshot.
+
+If you know your numeric Telegram user ID, set `telegram.user_id` in TOML and omit `chat_id` or leave it at `0`. The app derives the private chat ID from the user ID, while incoming messages must still match that chat and sender. `pair --user-id ID` prints these settings locally without a token, network access, or a code exchange. It does not write your configuration. Usernames and phone numbers cannot replace the numeric ID.
+
+If you do not know the ID, run `pair` with the runtime stopped, send the printed command privately to your bot, and configure the returned `user_id`. Discovery only accepts the exact random code; its lifetime defaults to five minutes and is configurable. Use a dedicated new bot for initial discovery: pairing polls may acknowledge earlier unrelated updates while looking for the code. Start the bot's private chat before running the device.
 
 ## Audio checks and calibration
+
+Set `detection.wake_phrase` to your preferred English phrase in TOML, such as `HEY BUDDY`, and restart the app/service. The app creates the keyword configuration automatically; the [wake phrase settings](configuration.md#wake-phrase) explain the supported format.
 
 1. Run `telie-talkie devices` and select the intended input and output. Device names usually survive reboots better than numeric indices. Where several devices share a name, use a more specific PortAudio name.
 2. Run `telie-talkie doctor --audio-check`. Hear the ready tone, speak for the configured check duration (three seconds by default), and confirm the replay is clear. Set the input rate and channels supported by the device; capture is normalized locally to 16 kHz mono. Output rate defaults to 48 kHz.

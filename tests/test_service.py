@@ -127,7 +127,7 @@ def test_invalid_environment_value_is_not_echoed(credentials, monkeypatch, token
 
 async def test_sigterm_closes_workers_and_preserves_queue(tmp_path):
     (tmp_path / "config.toml").write_text(
-        '[telegram]\nchat_id=101\nuser_id=101\n[storage]\ndirectory="."\nmax_audio_bytes=1024\n'
+        '[telegram]\nuser_id=101\n[storage]\ndirectory="."\nmax_audio_bytes=1024\n'
     )
     file = tmp_path / "bot.token"
     file.write_text("123:fixture-only")
@@ -212,6 +212,7 @@ cli.main()
         try:
             store.recover()
             row = store.head("outbox", ("pending",))
+            assert row["chat_id"] == 101
             assert store.path(row["path"]).read_bytes() == b"queued voice"
         finally:
             store.close()
