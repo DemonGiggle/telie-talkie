@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import math
 import re
-import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
 from urllib.parse import urlsplit
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 uses the maintained TOML parser backport.
+    import tomli as tomllib
 
 MODEL_SAMPLE_RATE = 16000
 DEFAULT_MODEL_NAME = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"

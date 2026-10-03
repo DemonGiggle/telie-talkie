@@ -4,7 +4,7 @@
 
 **Turn a Raspberry Pi into a hands-free Telegram voice intercom.**
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![Linux](https://img.shields.io/badge/platform-Linux-111827?logo=linux&logoColor=white)](#what-you-need)
 [![Local detection](https://img.shields.io/badge/wake_detection-local-0D9488)](#how-it-works)
 [![MIT license](https://img.shields.io/badge/license-MIT-6366F1)](LICENSE)
@@ -26,7 +26,7 @@ Say **“Hello Kitty”**, wait for the beep, and speak. Your bot sends the reco
 
 ### What you need
 
-A Raspberry Pi 4/5 running **64-bit Linux**, Python **3.11+**, a compatible microphone and speaker, FFmpeg with Opus support, and a dedicated Telegram bot. A regular Linux computer also works.
+A Raspberry Pi 4/5 running **64-bit Linux**, Python **3.10+**, a compatible microphone and speaker, FFmpeg with Opus support, and a dedicated Telegram bot. A regular Linux computer also works. Python 3.10 is the minimum supported by the pinned [NumPy dependency](https://pypi.org/project/numpy/2.2.6/); newer supported Python versions also work.
 
 Microphone capture rate, input channels, selected channel, buffering, and latency are configurable. Native **44.1/48 kHz** input is resampled locally to the detector's **16 kHz mono** format. Speaker output defaults to **48 kHz**, with selectable channels and latency. Run the audio check before relying on wake detection.
 
@@ -152,7 +152,7 @@ ruff format --check src tests
 pytest -q
 ```
 
-Tests use fake audio and Telegram adapters for recording, playback suppression, authorization, FIFO retries, capacity, deduplication, and restart recovery. FFmpeg integration tests exercise real Opus, MP3, and AAC conversion. Optional [model tests](tests/test_models.py) use downloaded models without requiring a microphone. On Linux with a running user systemd manager, `TELIE_TEST_SYSTEMD=1 pytest -q tests/test_service.py` also checks real credential delivery. Shutdown tests send SIGTERM and verify queue recovery.
+Tests use fake audio and Telegram adapters for recording, playback suppression, authorization, FIFO retries, capacity, deduplication, and restart recovery. FFmpeg integration tests exercise real Opus, MP3, and AAC conversion. Optional [model tests](tests/test_models.py) use downloaded models without requiring a microphone. On Linux with a running user systemd manager, `TELIE_TEST_SYSTEMD=1 pytest -q tests/test_service.py` also checks real credential delivery. Shutdown tests send SIGTERM and verify queue recovery. CI tests Python 3.10, 3.11, 3.12, and 3.13, including worker failure and converter cancellation cleanup.
 
 ```bash
 # After setup-models, include real keyword/VAD inference in the test run:

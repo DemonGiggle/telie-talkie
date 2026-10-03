@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import numpy as np
+from anyio import fail_after
 
 from .config import MODEL_SAMPLE_RATE, AudioConfig, TonesConfig
 
@@ -103,9 +104,7 @@ class SoundDeviceAudio:
 
     async def read(self, timeout: float | None = None) -> np.ndarray:
         try:
-            async with asyncio.timeout(
-                timeout if timeout is not None else self.config.read_timeout_seconds
-            ):
+            with fail_after(timeout if timeout is not None else self.config.read_timeout_seconds):
                 while len(self.pending) < self.config.processing_block_size:
                     samples, overflow = await self.queue.get()
                     if overflow:

@@ -4,10 +4,35 @@ import subprocess
 
 import numpy as np
 import pytest
+from anyio import create_task_group
 
 from telegram_talkie.codec import CodecError, FFmpegCodec
+from telegram_talkie.config import CodecConfig
 
 pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg is not installed")
+
+
+async def test_worker_group_cancellation_reaps_converter(tmp_path, monkeypatch):
+    executable = tmp_path / "stalled-converter"
+    executable.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(60)\n")
+    executable.chmod(0o755)
+    spawned = asyncio.Event()
+    processes = []
+    spawn = asyncio.create_subprocess_exec
+
+    async def track(*args, **kwargs):
+        process = await spawn(*args, **kwargs)
+        processes.append(process)
+        spawned.set()
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", track)
+    codec = FFmpegCodec(config=CodecConfig(executable=str(executable)))
+    async with create_task_group() as group:
+        group.start_soon(codec.encode, np.zeros(1600, dtype=np.float32))
+        await spawned.wait()
+        group.cancel_scope.cancel()
+    assert len(processes) == 1 and processes[0].returncode is not None
 
 
 async def test_real_ogg_opus_round_trip_and_volume(tmp_path):

@@ -1,10 +1,9 @@
-import tomllib
 from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
-from telegram_talkie.config import Config, load_config
+from telegram_talkie.config import Config, load_config, tomllib
 
 
 def test_example_config_and_relative_paths():

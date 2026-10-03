@@ -7,6 +7,7 @@ import random
 import time
 
 import numpy as np
+from anyio import create_task_group
 
 from .audio import tone
 from .codec import CodecError
@@ -42,12 +43,12 @@ class Talkie:
     async def run(self) -> None:
         try:
             await self.audio.start()
-            async with asyncio.TaskGroup() as group:
-                group.create_task(self.poll_loop())
-                group.create_task(self.prepare_loop())
-                group.create_task(self.send_loop())
-                group.create_task(self.notice_loop())
-                group.create_task(self.audio_loop())
+            async with create_task_group() as group:
+                group.start_soon(self.poll_loop)
+                group.start_soon(self.prepare_loop)
+                group.start_soon(self.send_loop)
+                group.start_soon(self.notice_loop)
+                group.start_soon(self.audio_loop)
         finally:
             await self.audio.close()
 

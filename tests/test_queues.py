@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from telegram_talkie.codec import CodecError
@@ -5,6 +7,37 @@ from telegram_talkie.storage import InstanceLock, StorageFull, Store
 from telegram_talkie.telegram import TelegramError
 
 from .conftest import message
+
+
+async def test_worker_failure_cancels_peers_and_closes_audio(rig):
+    ready = asyncio.Event()
+    started, closed = set(), set()
+
+    def worker(name):
+        async def wait():
+            started.add(name)
+            if len(started) == 4:
+                ready.set()
+            try:
+                await asyncio.Future()
+            finally:
+                closed.add(name)
+
+        return wait
+
+    async def fail():
+        await ready.wait()
+        raise RuntimeError("worker failed")
+
+    names = ("prepare_loop", "send_loop", "notice_loop", "audio_loop")
+    for name in names:
+        setattr(rig, name, worker(name))
+    rig.poll_loop = fail
+    with pytest.raises(Exception) as failure:
+        await rig.run()
+    assert any(str(error) == "worker failed" for error in failure.value.exceptions)
+    assert closed == set(names)
+    assert not rig.audio.enabled
 
 
 async def test_authorization_private_chat_both_ids_and_media_types(rig):

@@ -97,6 +97,13 @@ async def test_configured_pairing_timeout_and_code_length(monkeypatch):
     assert any("25 seconds" in line for line in output)
 
 
+async def test_pairing_timeout_reports_expiry():
+    from .conftest import FakeTelegram
+
+    with pytest.raises(ValueError, match="Pairing code expired"):
+        await pair(FakeTelegram(), timeout=0.01, output=lambda text: None)
+
+
 def test_debug_logging_keeps_http_credentials_redacted(capsys):
     import logging
 

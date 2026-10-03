@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from anyio import fail_after
 
 from telegram_talkie.cli import configure_logging, require_token
 from telegram_talkie.config import Config
@@ -195,7 +196,7 @@ cli.main()
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        async with asyncio.timeout(10):
+        with fail_after(10):
             while not (tmp_path / "ready").exists():
                 if process.returncode is not None:
                     pytest.fail("Worker exited before becoming ready")
@@ -248,7 +249,7 @@ async def test_supplied_unit_validates_in_isolated_installation(tmp_path):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    async with asyncio.timeout(10):
+    with fail_after(10):
         _, stderr = await process.communicate()
     assert process.returncode == 0, stderr.decode()
 
@@ -289,7 +290,7 @@ print('Systemd credential loading passed')
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        async with asyncio.timeout(20):
+        with fail_after(20):
             stdout, stderr = await process.communicate()
         assert process.returncode == 0, stderr.decode()
         assert b"Systemd credential loading passed" in stdout

@@ -1,6 +1,6 @@
 # Run with systemd
 
-The supplied [service unit](../deploy/telie-talkie.service) starts Telie Talkie at boot, restarts it after failures, and runs it as a dedicated `telie` account with audio-device access. It requires **systemd 247 or later**, Python 3.11+, FFmpeg, and PortAudio. Use ALSA devices accessible to the `audio` group; desktop session audio may require a user service instead.
+The supplied [service unit](../deploy/telie-talkie.service) starts Telie Talkie at boot, restarts it after failures, and runs it as a dedicated `telie` account with audio-device access. It requires **systemd 247 or later**, Python 3.10+, FFmpeg, and PortAudio. Use ALSA devices accessible to the `audio` group; desktop session audio may require a user service instead.
 
 ## Token design
 

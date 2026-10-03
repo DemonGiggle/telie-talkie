@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import numpy as np
+from anyio import CancelScope, fail_after
 
 from .config import MODEL_SAMPLE_RATE, CodecConfig
 
@@ -43,7 +44,7 @@ class FFmpegCodec:
         feeder = asyncio.create_task(feed())
         output = bytearray()
         try:
-            async with asyncio.timeout(self.config.timeout_seconds):
+            with fail_after(self.config.timeout_seconds):
                 while chunk := await process.stdout.read(self.config.chunk_bytes):
                     if len(output) + len(chunk) > max_bytes:
                         raise CodecError("audio exceeds the decoded duration or output limit")
@@ -58,9 +59,11 @@ class FFmpegCodec:
         finally:
             if process.returncode is None:
                 process.kill()
-            await process.wait()
-            feeder.cancel()
-            await asyncio.gather(feeder, return_exceptions=True)
+            # A cancelled worker group must still reap FFmpeg and its input feeder.
+            with CancelScope(shield=True):
+                await process.wait()
+                feeder.cancel()
+                await asyncio.gather(feeder, return_exceptions=True)
 
     async def encode(self, samples: np.ndarray, sample_rate: int = MODEL_SAMPLE_RATE) -> bytes:
         return await self._convert(

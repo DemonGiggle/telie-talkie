@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from anyio import fail_after
 
 from . import __version__
 from .app import Talkie, backoff
@@ -92,7 +93,7 @@ async def pair(
     offset = 0
     attempts = 0
     try:
-        async with asyncio.timeout(timeout):
+        with fail_after(timeout):
             while True:
                 try:
                     updates = await telegram.updates(offset)

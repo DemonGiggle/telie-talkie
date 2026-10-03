@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "A local wake-word voice intercom for one Telegram user"
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
+  "anyio==4.15.1",
   "httpx==0.28.1",
   "numpy==2.2.6",
   "soxr==1.1.0",
@@ -17,6 +18,7 @@ dependencies = [
   "sherpa-onnx==1.13.8",
   "sherpa-onnx-core==1.13.8",
   "sentencepiece==0.2.2",
+  "tomli==2.4.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +41,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
