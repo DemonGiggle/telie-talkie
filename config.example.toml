@@ -84,7 +84,8 @@ max_model_file_bytes = 30000000
 ready_frequency_hz = 1000.0
 error_frequency_hz = 440.0
 duration_seconds = 0.12
-ready_repeats = 1
+recording_finished_duration_seconds = 0.6
+ready_repeats = 2
 error_repeats = 2
 gap_seconds = 0.1
 

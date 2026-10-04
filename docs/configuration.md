@@ -10,7 +10,7 @@ The token is loaded from a systemd credential, a token file, or an environment v
 | --- | --- |
 | `telegram` | Authorized user and optional chat override, token source variable names and credential filename, API base URL, long-poll timeout, incoming size and duration limits |
 | `audio` | Devices, native rates, channels, channel selection, gains, hardware/processing blocks, buffers, latency, resampling quality, read timeout, speaker settling |
-| `tones` | Ready/error frequencies, duration, repeat counts, and spacing |
+| `tones` | Ready/error frequencies, short-beep duration and repeat counts, recording-finished tone duration, and spacing |
 | `detection` | Wake phrases, keyword thresholds/boosting, trailing blanks, beam paths, feature dimension, inference provider/device/threads, VAD thresholds/timing/buffer |
 | `recording` | Speech wait, finishing silence, maximum duration, pre-roll, and retained trailing silence |
 | `codec` | FFmpeg executable, Opus bitrate/rate/application/frame duration/complexity, threads, conversion timeout, output size, read chunks, accepted input containers |
@@ -44,7 +44,7 @@ For deployment, use the supplied [systemd service and credential instructions](s
 
 ## Wake phrase
 
-Set one or more phrases in the existing `[detection]` table. Saying any listed phrase starts the same ready-beep and recording flow:
+Set one or more phrases in the existing `[detection]` table. Saying any listed phrase starts the same two-beep and recording flow. The app suppresses microphone frames while tones play: the two short ready beeps play before recording, and one longer tone plays as soon as capture ends (whether speech was detected or not). All tones use `audio.beep_volume`; adjust `[tones].duration_seconds`, `[tones].recording_finished_duration_seconds`, or `[tones].ready_repeats` to change the timing.
 
 ```toml
 [detection]

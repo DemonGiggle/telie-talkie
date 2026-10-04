@@ -13,17 +13,24 @@ class AudioError(Exception):
 
 
 def tone(
-    sample_rate: int, volume: float, error: bool = False, settings: TonesConfig | None = None
+    sample_rate: int,
+    volume: float,
+    error: bool = False,
+    settings: TonesConfig | None = None,
+    *,
+    duration_seconds: float | None = None,
+    repeats: int | None = None,
 ) -> np.ndarray:
     settings = settings or TonesConfig()
-    time = np.arange(int(sample_rate * settings.duration_seconds), dtype=np.float32) / sample_rate
+    duration = settings.duration_seconds if duration_seconds is None else duration_seconds
+    time = np.arange(int(sample_rate * duration), dtype=np.float32) / sample_rate
     # Fade both ends to avoid loud clicks.
     frequency = settings.error_frequency_hz if error else settings.ready_frequency_hz
-    beep = (
-        np.sin(2 * np.pi * frequency * time) * np.sin(np.pi * time / settings.duration_seconds) ** 2
-    )
+    beep = np.sin(2 * np.pi * frequency * time) * np.sin(np.pi * time / duration) ** 2
     beep = (beep * volume).astype(np.float32)
-    repeats = settings.error_repeats if error else settings.ready_repeats
+    repeats = repeats if repeats is not None else (
+        settings.error_repeats if error else settings.ready_repeats
+    )
     gap = np.zeros(int(sample_rate * settings.gap_seconds), dtype=np.float32)
     parts = [part for _ in range(repeats - 1) for part in (beep, gap)] + [beep]
     return np.concatenate(parts)

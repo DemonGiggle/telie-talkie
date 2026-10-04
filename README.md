@@ -83,22 +83,23 @@ telie-talkie doctor --online --audio-check
 telie-talkie run
 ```
 
-Say **“Hello Kitty”**, wait until the beep ends, and speak. Pause for **1.5 seconds** to send. Reply with a Telegram voice note to hear it on the device.
+Say **“Hello Kitty”**, wait until the two-beep cue ends, and speak. A long tone signals that recording has stopped. Pause for **1.5 seconds** to send. Reply with a Telegram voice note to hear it on the device.
 
 ### How it works
 
 ```mermaid
 flowchart LR
     M[Microphone] --> W[Local wake detection]
-    W --> B[Ready beep]
+    W --> B[Two ready beeps]
     B --> R[Speech recording]
-    R --> O[(Persistent outbox)]
+    R --> F[One long recording-finished tone]
+    F --> O[(Persistent outbox)]
     O --> T[Telegram bot]
     T --> I[(Persistent inbox)]
     I --> P[Speaker playback]
 ```
 
-The device defaults to sherpa-onnx's **int8 GigaSpeech English keyword model**. Silero VAD detects speech locally. By default, it waits up to **5 seconds** for speech after the beep, stops after **1.5 seconds of silence**, and limits the whole recording window to **60 seconds**. These timings and the model files can be changed in configuration. Empty recordings are discarded. A short pre-roll preserves the beginning of speech while VAD confirms it; the wake phrase and beep are excluded.
+The device defaults to sherpa-onnx's **int8 GigaSpeech English keyword model**. Silero VAD detects speech locally. After a wake phrase, it plays **two short beeps**, then waits up to **5 seconds** for speech, stops after **1.5 seconds of silence**, and limits the whole recording window to **60 seconds**. One longer tone signals that capture has ended, including when no speech was detected. These timings and the model files can be changed in configuration. Empty recordings are discarded. A short pre-roll preserves the beginning of speech while VAD confirms it; all tones are excluded from recording.
 
 FFmpeg creates **OGG/Opus** recordings for Telegram's `sendVoice` API. Incoming messages are received through long polling and saved as durable work before the next polling offset acknowledges them. A separate download worker validates incoming media before playback. Recording and playback share one audio loop; network work continues independently.
 
@@ -106,7 +107,7 @@ FFmpeg creates **OGG/Opus** recordings for Telegram's `sendVoice` API. Incoming 
 
 The commented [example configuration](config.example.toml) lists every setting. Existing configuration files continue to work; omitted settings use defaults. Relative storage and model directories resolve beside the TOML file, and individual model paths resolve inside the model directory. Use an alternative file with `telie-talkie --config /path/to/config.toml run`.
 
-Operational options include native audio format and channel routing, gains, hardware and processing block sizes, buffers, latency, tone pitch and duration, Opus encoding, network and conversion timeouts, retry policy, worker intervals, pairing, model selection, and log level. See the [configuration guide](docs/configuration.md) for examples and compatibility requirements.
+Operational options include native audio format and channel routing, gains, hardware and processing block sizes, buffers, latency, tone pitch, duration, and repeat counts, Opus encoding, network and conversion timeouts, retry policy, worker intervals, pairing, model selection, and log level. See the [configuration guide](docs/configuration.md) for examples and compatibility requirements.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
@@ -123,7 +124,7 @@ Operational options include native audio format and channel routing, gains, hard
 | `detection.wake_phrase` | `HELLO KITTY` | One English phrase or an array; any listed phrase triggers |
 | `detection.keywords_threshold` | `0.25` | Increase to make triggering harder |
 | `detection.vad_threshold` | `0.5` | Speech detection threshold |
-| `recording.speech_wait_seconds` | `5.0` | Wait for speech after the beep |
+| `recording.speech_wait_seconds` | `5.0` | Wait for speech after the ready beeps |
 | `recording.silence_seconds` | `1.5` | Silence needed to finish a recording |
 | `recording.max_seconds` | `60.0` | Maximum recording window |
 | `codec.bitrate_bps`, `codec.complexity` | `24000`, `10` | Voice quality, bandwidth, and encoding CPU use |

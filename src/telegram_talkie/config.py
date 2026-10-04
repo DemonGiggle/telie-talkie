@@ -97,7 +97,8 @@ class TonesConfig:
     ready_frequency_hz: float = 1000.0
     error_frequency_hz: float = 440.0
     duration_seconds: float = 0.12
-    ready_repeats: int = 1
+    recording_finished_duration_seconds: float = 0.6
+    ready_repeats: int = 2
     error_repeats: int = 2
     gap_seconds: float = 0.1
 
@@ -445,6 +446,7 @@ def validate_config(config: Config) -> None:
         ready_frequency_hz=tones.ready_frequency_hz,
         error_frequency_hz=tones.error_frequency_hz,
         duration_seconds=tones.duration_seconds,
+        recording_finished_duration_seconds=tones.recording_finished_duration_seconds,
     )
     if (
         max(tones.ready_frequency_hz, tones.error_frequency_hz) >= a.output_sample_rate / 2

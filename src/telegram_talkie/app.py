@@ -219,6 +219,15 @@ class Talkie:
             recording.feed(samples, await self.detector.speech(samples))
         self.audio.suspend()
         try:
+            await self.audio.play(
+                tone(
+                    self.config.audio.output_sample_rate,
+                    self.config.audio.beep_volume,
+                    settings=self.config.tones,
+                    duration_seconds=self.config.tones.recording_finished_duration_seconds,
+                    repeats=1,
+                )
+            )
             samples = recording.result()
             if samples is None:
                 log.info("Recording discarded: no speech")
