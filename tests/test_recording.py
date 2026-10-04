@@ -58,7 +58,7 @@ async def test_wake_beep_record_queue_and_speaker_suppression(rig):
     rig.audio.frames = frames(9, 0.032) + frames(1, 0.5) + frames(0, 1.6)
     with pytest.raises(EOFError):
         await rig.audio_loop()
-    assert len(rig.audio.played) == 1  # Ready beep; encoded audio excludes wake and beep.
+    assert len(rig.audio.played) == 2  # Ready beep and recording-finished tone.
     assert len(rig.codec.encoded) == 1
     assert not np.any(rig.codec.encoded[0] == 9)
     assert len(rig.detector.wake_calls) < 6
@@ -98,10 +98,10 @@ async def test_overlapping_incoming_messages_wait_for_recording(rig):
 
     rig.audio.on_read = incoming
     await rig.record_once()
-    assert len(rig.audio.played) == 1
+    assert len(rig.audio.played) == 2  # Ready and recording-finished tones.
     assert await rig.playback_once()
     assert await rig.playback_once()
-    assert len(rig.audio.played) == 3
+    assert len(rig.audio.played) == 4  # Two tones and two queued Telegram messages.
     assert len(rig.detector.wake_calls) == 0
     assert rig.audio.enabled and not rig.audio.buffered
 
@@ -114,5 +114,5 @@ async def test_full_storage_reports_error_and_preserves_existing_voice(rig):
     assert rig.store.head("outbox", ("pending",))["id"] == first
     assert rig.store.used_bytes == len(b"existing")
     assert rig.store.head_notice()
-    assert len(rig.audio.played) == 2  # Ready and error tones.
+    assert len(rig.audio.played) == 3  # Ready, recording-finished, and error tones.
     assert rig.audio.enabled
