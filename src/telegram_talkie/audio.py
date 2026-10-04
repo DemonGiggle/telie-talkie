@@ -28,8 +28,10 @@ def tone(
     frequency = settings.error_frequency_hz if error else settings.ready_frequency_hz
     beep = np.sin(2 * np.pi * frequency * time) * np.sin(np.pi * time / duration) ** 2
     beep = (beep * volume).astype(np.float32)
-    repeats = repeats if repeats is not None else (
-        settings.error_repeats if error else settings.ready_repeats
+    repeats = (
+        repeats
+        if repeats is not None
+        else (settings.error_repeats if error else settings.ready_repeats)
     )
     gap = np.zeros(int(sample_rate * settings.gap_seconds), dtype=np.float32)
     parts = [part for _ in range(repeats - 1) for part in (beep, gap)] + [beep]
