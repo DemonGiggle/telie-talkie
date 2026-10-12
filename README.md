@@ -92,8 +92,8 @@ flowchart LR
     M[Microphone] --> W[Local wake detection]
     W --> B[Two ready beeps]
     B --> R[Speech recording]
-    R --> F[One long recording-finished tone]
-    F --> O[(Persistent outbox)]
+    R --> O[(Persistent outbox)]
+    O --> F[One long recording-finished tone]
     O --> T[Telegram bot]
     T --> I[(Persistent inbox)]
     I --> P[Speaker playback]
@@ -147,6 +147,8 @@ Single-string settings remain supported. Restart the app or service after editin
 ### Offline behavior
 
 Queued recordings retry uploads with backoff. Download failures retry without letting later incoming audio overtake earlier work. Restarting recovers pending uploads/downloads and **replays interrupted playback from the beginning**. Completed audio files are deleted. Oversized, undecodable, and unstorable new incoming audio is rejected with a queued Telegram error notice; later messages can still play. A recording that cannot be stored produces an error tone and a queued notice.
+
+Audio failures pause audio processing and retry device discovery and stream opening with backoff while Telegram workers continue running. Reconnected devices can resume operation without service restarts. Failed playback keeps its downloaded file and retries in order; completed recordings are saved before the completion tone. An obsolete ALSA card-number suffix is resolved automatically only when the same named endpoint and PCM device number have a unique match.
 
 Only stored messages survive a restart; an unfinished recording is not yet queued. Telegram keeps updates that the device has not received for at most **24 hours**, and the hosted Bot API limits downloads to **20 MB**. If an upload succeeds but its response is lost, retrying may send a duplicate. See the [Telegram Bot API](https://core.telegram.org/bots/api#getting-updates).
 

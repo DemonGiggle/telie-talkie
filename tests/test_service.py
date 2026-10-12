@@ -125,9 +125,11 @@ def test_invalid_environment_value_is_not_echoed(credentials, monkeypatch, token
     assert token not in str(error.value)
 
 
-async def test_sigterm_closes_workers_and_preserves_queue(tmp_path):
+@pytest.mark.parametrize("audio_available", [True, False])
+async def test_sigterm_closes_workers_and_preserves_queue(tmp_path, audio_available):
     (tmp_path / "config.toml").write_text(
         '[telegram]\nuser_id=101\n[storage]\ndirectory="."\nmax_audio_bytes=1024\n'
+        "[retry]\ninitial_seconds=30\nmax_seconds=30\n"
     )
     file = tmp_path / "bot.token"
     file.write_text("123:fixture-only")
@@ -136,6 +138,7 @@ import asyncio
 import os
 from pathlib import Path
 from telegram_talkie import cli
+from telegram_talkie.audio import AudioError
 from telegram_talkie.storage import Store
 
 directory = Path(os.environ['TELEGRAM_BOT_TOKEN_FILE']).parent
@@ -158,7 +161,9 @@ class Audio:
         pass
 
     async def start(self):
-        pass
+        if os.environ['TEST_AUDIO_AVAILABLE'] == '0':
+            (directory / 'audio-retrying').touch()
+            raise AudioError('fixture speaker unavailable')
 
     async def read(self):
         await asyncio.Future()
@@ -191,13 +196,19 @@ cli.main()
         "--config",
         str(tmp_path / "config.toml"),
         "run",
-        env={**os.environ, "TELEGRAM_BOT_TOKEN_FILE": str(file)},
+        env={
+            **os.environ,
+            "TELEGRAM_BOT_TOKEN_FILE": str(file),
+            "TEST_AUDIO_AVAILABLE": "1" if audio_available else "0",
+        },
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
         with fail_after(10):
-            while not (tmp_path / "ready").exists():
+            while not (tmp_path / "ready").exists() or (
+                not audio_available and not (tmp_path / "audio-retrying").exists()
+            ):
                 if process.returncode is not None:
                     pytest.fail("Worker exited before becoming ready")
                 await asyncio.sleep(0.01)

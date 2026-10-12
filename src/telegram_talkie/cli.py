@@ -16,7 +16,7 @@ from anyio import fail_after
 
 from . import __version__
 from .app import Talkie, backoff
-from .audio import AudioError, SoundDeviceAudio, tone
+from .audio import AudioError, SoundDeviceAudio, check_device, tone
 from .codec import FFmpegCodec
 from .config import MODEL_SAMPLE_RATE, Config, PairingConfig, RetryConfig, load_config
 from .models import LocalDetector, check_models, setup_models
@@ -168,31 +168,10 @@ async def doctor(config: Config, online: bool, audio_check: bool) -> bool:
     try:
         import sounddevice as sd
 
-        audio_checks = (
-            (
-                "microphone",
-                sd.check_input_settings,
-                config.audio.input_device,
-                config.audio.input_channels,
-                config.audio.input_sample_rate,
-            ),
-            (
-                "speaker",
-                sd.check_output_settings,
-                config.audio.output_device,
-                config.audio.output_channels,
-                config.audio.output_sample_rate,
-            ),
-        )
-        for name, check, device, channels, samplerate in audio_checks:
+        for direction, name in (("input", "microphone"), ("output", "speaker")):
             try:
-                check(
-                    device=device,
-                    channels=channels,
-                    dtype="float32",
-                    samplerate=samplerate,
-                )
-            except Exception as error:
+                device = check_device(sd, config.audio, direction)
+            except AudioError as error:
                 report(
                     f"PortAudio {name} settings",
                     False,

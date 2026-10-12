@@ -9,7 +9,7 @@ import time
 import numpy as np
 from anyio import create_task_group
 
-from .audio import tone
+from .audio import AudioError, tone
 from .codec import CodecError
 from .config import Config, RetryConfig
 from .recording import Recording
@@ -42,7 +42,6 @@ class Talkie:
 
     async def run(self) -> None:
         try:
-            await self.audio.start()
             async with create_task_group() as group:
                 group.start_soon(self.poll_loop)
                 group.start_soon(self.prepare_loop)
@@ -185,6 +184,11 @@ class Talkie:
         except CodecError as error:
             self.store.finish("inbox", row, str(error))
             log.warning("Playback audio rejected: %s", error)
+        except AudioError:
+            # Audio recovery must replay this file before later messages, without
+            # redownloading it or resetting the concurrently running network workers.
+            self.store.state("inbox", row["id"], "ready")
+            raise
         else:
             self.store.finish("inbox", row)
             log.info("Incoming audio played (update %s)", row["update_id"])
@@ -219,6 +223,26 @@ class Talkie:
             recording.feed(samples, await self.detector.speech(samples))
         self.audio.suspend()
         try:
+            samples = recording.result()
+            failed = False
+            if samples is not None:
+                # Persist speech before playing the completion tone: a speaker failure
+                # after capture must not discard the user's completed recording.
+                try:
+                    encoded = await self.codec.encode(samples)
+                    row_id = self.store.enqueue_voice(
+                        self.config.telegram.resolved_chat_id, encoded
+                    )
+                    log.info("Recording queued (queue %s)", row_id)
+                except (StorageFull, CodecError) as error:
+                    failed = True
+                    log.warning("Recording could not be queued: %s", error)
+                    self.store.notice(
+                        self.config.telegram.resolved_chat_id,
+                        f"The device could not store a new recording: {error}.",
+                    )
+            else:
+                log.info("Recording discarded: no speech")
             await self.audio.play(
                 tone(
                     self.config.audio.output_sample_rate,
@@ -228,20 +252,7 @@ class Talkie:
                     repeats=1,
                 )
             )
-            samples = recording.result()
-            if samples is None:
-                log.info("Recording discarded: no speech")
-                return
-            try:
-                encoded = await self.codec.encode(samples)
-                row_id = self.store.enqueue_voice(self.config.telegram.resolved_chat_id, encoded)
-                log.info("Recording queued (queue %s)", row_id)
-            except (StorageFull, CodecError) as error:
-                log.warning("Recording could not be queued: %s", error)
-                self.store.notice(
-                    self.config.telegram.resolved_chat_id,
-                    f"The device could not store a new recording: {error}.",
-                )
+            if failed:
                 await self.audio.play(
                     tone(
                         self.config.audio.output_sample_rate,
@@ -254,11 +265,28 @@ class Talkie:
             await self._resume()
 
     async def audio_loop(self) -> None:
-        log.info("Listening for wake phrase")
+        attempts = 0
+        recovering = False
         while True:
-            if await self.playback_once():
-                continue
-            samples = await self.audio.read()
-            if await self.detector.wake(samples):
-                log.info("Wake phrase detected")
-                await self.record_once()
+            try:
+                await self.audio.start()
+                if recovering:
+                    self.detector.reset()
+                log.info("Listening for wake phrase")
+                while True:
+                    if await self.playback_once():
+                        attempts = 0
+                        continue
+                    samples = await self.audio.read()
+                    if await self.detector.wake(samples):
+                        log.info("Wake phrase detected")
+                        await self.record_once()
+                    attempts = 0
+            except AudioError as error:
+                delay = backoff(attempts, settings=self.config.retry)
+                attempts += 1
+                recovering = True
+                log.warning("Audio unavailable; retrying in %.1f seconds: %s", delay, error)
+            finally:
+                await self.audio.close()
+            await asyncio.sleep(delay)

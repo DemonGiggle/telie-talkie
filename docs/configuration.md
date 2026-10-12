@@ -44,7 +44,7 @@ For deployment, use the supplied [systemd service and credential instructions](s
 
 ## Wake phrase
 
-Set one or more phrases in the existing `[detection]` table. Saying any listed phrase starts the same two-beep and recording flow. The app suppresses microphone frames while tones play: the two short ready beeps play before recording, and one longer tone plays as soon as capture ends (whether speech was detected or not). All tones use `audio.beep_volume`; adjust `[tones].duration_seconds`, `[tones].recording_finished_duration_seconds`, or `[tones].ready_repeats` to change the timing.
+Set one or more phrases in the existing `[detection]` table. Saying any listed phrase starts the same two-beep and recording flow. The app suppresses microphone frames while tones play: the two short ready beeps play before recording, and one longer tone plays after capture ends and any detected speech is saved to the outgoing queue. The completion tone also plays when no speech was detected. All tones use `audio.beep_volume`; adjust `[tones].duration_seconds`, `[tones].recording_finished_duration_seconds`, or `[tones].ready_repeats` to change the timing.
 
 ```toml
 [detection]
@@ -77,11 +77,13 @@ resample_quality = "HQ"
 
 Select the device name/index using `devices`. `input_channel` is zero-based; use `1` for the second channel or `-1` to average all captured channels. Opposite-polarity channels can cancel when averaged, so select a channel when appropriate. Playback duplicates mono audio across `output_channels`.
 
+Prefer unique stable device names without the numeric ALSA `(hw:card,device)` suffix. Existing full names with stale card numbers can be resolved when exactly one ALSA endpoint has the same name and PCM device number for the requested direction. Audio failures pause the audio worker and retry using `[retry].initial_seconds`, `multiplier`, `max_seconds`, and `jitter_ratio`; Telegram workers continue running. The [setup guide](setup.md#audio-checks-and-calibration) explains recovery and queue behavior.
+
 `block_size` counts frames at the hardware input rate. `processing_block_size` counts samples at the normalized 16 kHz rate. The example uses 32 ms for both. A 44.1 kHz device can use `input_sample_rate = 44100` and `block_size = 1411` or another block size accepted by its driver; hardware and processing blocks do not need an exact integer ratio.
 
 Input is converted to mono, scaled by `input_gain`, and resampled using a stateful SoXR filter. Gain and resampling output are clipped to the normalized sample range. Resampler history and buffered input are cleared after tones/playback. HQ/VHQ use more filtering and can add lookahead latency; MQ/LQ trade some quality for lower cost. QQ uses quick interpolation and offers little protection against aliasing when downsampling.
 
-Use smaller blocks or `"low"` latency if the device supports them reliably. Increase buffering when brief scheduling delays cause overflow. Persistent overflow means processing cannot keep up: larger buffers alone will increase latency. `read_timeout_seconds` covers gathering a processing block, including resampler lookahead.
+Use smaller blocks or `"low"` latency if the device supports them reliably. Increase buffering when brief scheduling delays cause overflow. Persistent overflow means processing cannot keep up: larger buffers alone will increase latency. `read_timeout_seconds` covers gathering a processing block, including resampler lookahead. `playback_grace_seconds` defaults to five seconds beyond the audio duration and any explicit numeric output latency; if playback does not complete by then, the output stream is closed and audio recovery begins.
 
 ## Small CPUs and bandwidth
 

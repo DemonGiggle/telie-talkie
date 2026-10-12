@@ -21,6 +21,12 @@ Set `detection.wake_phrase` to your preferred English phrases in TOML, such as `
 5. Tune `vad_threshold` if noise counts as speech or quiet speech is missed. Keep pre-roll at least as long as the VAD minimum speech confirmation period.
 6. Send voice notes containing the configured wake phrases back to the device. Playback should not trigger a recording. Increase `audio.settle_seconds` if room echoes last beyond playback.
 
+If an existing full ALSA device name contains an obsolete card number, the app can resolve it automatically when exactly one ALSA endpoint has the same name, PCM device number, and input/output direction. It logs the replacement and uses it for the current audio session. Ambiguous or missing devices remain unavailable; the app does not choose a different device or the default speaker.
+
+When startup, capture, or playback fails, the app pauses audio and retries discovery and stream opening using the configured `[retry]` delays. Telegram polling, downloads, uploads, and notices continue while audio is unavailable. Each retry closes the audio streams and refreshes PortAudio's cached device list, allowing a reconnected USB device to be found without restarting the service. Listening resumes after the configured endpoints work again. Permanently invalid names, rates, or channel settings still require correcting the configuration and one app/service restart to load it.
+
+Failed incoming playback retains its downloaded file and retries from the beginning before later messages. Completed recordings are saved before the completion tone, so a speaker failure at that point does not lose captured speech. A microphone failure during capture discards the unfinished recording.
+
 If a USB microphone exposes 44.1 or 48 kHz, set `audio.input_sample_rate` to that native rate; the app handles streaming resampling. The [configuration guide](configuration.md) includes stereo input, buffering, latency, slower CPU, and network examples. The service below uses an ALSA/PortAudio device available to the `audio` group; a desktop-only PulseAudio/PipeWire session may require a user service and its session environment instead.
 
 ## Run at startup
@@ -58,6 +64,7 @@ Before unattended use, complete these checks on the target device:
 - Speaker playback of the wake phrase does not start a new recording.
 - After disconnecting the network, several outgoing recordings remain queued and arrive after reconnection.
 - Restarting during an outage preserves queued work; interrupting playback replays it from the beginning.
+- Unplugging and reconnecting the USB audio device pauses and resumes audio without service restarts; Telegram messages remain queued and play in order after recovery.
 - Oversized/corrupt media is rejected and a later valid message still plays.
 
 The automated test suite covers software behavior. Live Telegram delivery and acoustic performance still require this device-level check.

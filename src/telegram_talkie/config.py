@@ -83,6 +83,7 @@ class AudioConfig:
     processing_block_size: int = 512
     buffer_blocks: int = 64
     read_timeout_seconds: float = 1.0
+    playback_grace_seconds: float = 5.0
     input_latency: str | float = "high"
     output_latency: str | float = "high"
     resample_quality: str = "HQ"
@@ -356,6 +357,7 @@ def validate_config(config: Config) -> None:
         buffer_blocks=a.buffer_blocks,
         processing_block_size=a.processing_block_size,
         read_timeout_seconds=a.read_timeout_seconds,
+        playback_grace_seconds=a.playback_grace_seconds,
     )
     if (
         a.input_channels < 1

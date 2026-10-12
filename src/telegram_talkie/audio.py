@@ -1,15 +1,72 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
+from contextlib import suppress
 
 import numpy as np
-from anyio import fail_after
+from anyio import CancelScope, fail_after
 
 from .config import MODEL_SAMPLE_RATE, AudioConfig, TonesConfig
+
+log = logging.getLogger(__name__)
 
 
 class AudioError(Exception):
     pass
+
+
+def _resolve_device(sd, device: str, direction: str) -> int | str:
+    try:
+        sd.query_devices(device, kind=direction)
+        return device
+    except ValueError:
+        # Only the ALSA card number is dynamic. Keep the device name, PCM number,
+        # direction and host API, and require exactly one matching endpoint.
+        pattern = r"(.+?)\s*\(hw:\d+,(\d+)\)(?:,\s*ALSA)?"
+        match = re.fullmatch(pattern, device.strip(), flags=re.IGNORECASE)
+        if not match or not match[1].strip():
+            raise
+        candidates = []
+        for index, info in enumerate(sd.query_devices()):
+            current = re.fullmatch(pattern, info["name"], flags=re.IGNORECASE)
+            if (
+                current
+                and current[1].strip().casefold() == match[1].strip().casefold()
+                and current[2] == match[2]
+                and info[f"max_{direction}_channels"] > 0
+                and sd.query_hostapis(info["hostapi"])["name"] == "ALSA"
+            ):
+                candidates.append((index, info["name"]))
+        if len(candidates) != 1:
+            raise ValueError(
+                f"Expected one {direction} ALSA device matching {match[1].strip()!r} "
+                f"and PCM {match[2]}; found {len(candidates)}"
+            ) from None
+        index, name = candidates[0]
+        log.warning("Resolved stale %s audio device %r as %r", direction, device, name)
+        return index
+
+
+def check_device(sd, config: AudioConfig, direction: str) -> int | str | None:
+    """Resolve and validate an endpoint, including an obsolete ALSA card suffix."""
+    configured = device = getattr(config, f"{direction}_device")
+    try:
+        if isinstance(device, str):
+            device = _resolve_device(sd, device, direction)
+        getattr(sd, f"check_{direction}_settings")(
+            device=device,
+            channels=getattr(config, f"{direction}_channels"),
+            dtype="float32",
+            samplerate=getattr(config, f"{direction}_sample_rate"),
+        )
+    except (sd.PortAudioError, ValueError) as error:
+        raise AudioError(
+            f"Configured {direction} audio device {configured!r} is unavailable or "
+            f"incompatible: {error}"
+        ) from error
+    return device
 
 
 def tone(
@@ -60,57 +117,52 @@ class SoundDeviceAudio:
         self.sd = None
 
     async def start(self) -> None:
-        import sounddevice as sd
-
-        # Validate both endpoints before claiming the app is listening. Otherwise a stale
-        # output-device name can remain unnoticed until a wake phrase tries to play a tone,
-        # which fails inside the background task group and restarts the service.
-        for direction, check, device, channels, samplerate in (
-            (
-                "input",
-                getattr(sd, "check_input_settings", None),
-                self.config.input_device,
-                self.config.input_channels,
-                self.config.input_sample_rate,
-            ),
-            (
-                "output",
-                getattr(sd, "check_output_settings", None),
-                self.config.output_device,
-                self.config.output_channels,
-                self.config.output_sample_rate,
-            ),
-        ):
-            # The real sounddevice module exposes both checks. Keep lightweight audio
-            # adapters/test doubles compatible if they intentionally omit validation APIs.
-            if check is None:
-                continue
-            try:
-                check(
-                    device=device,
-                    channels=channels,
-                    dtype="float32",
-                    samplerate=samplerate,
-                )
-            except Exception as error:
-                raise AudioError(
-                    f"Configured {direction} audio device {device!r} is unavailable or "
-                    f"incompatible: {error}"
-                ) from error
-
-        self.sd = sd
+        await self.close()
         self.loop = asyncio.get_running_loop()
-        self.input = sd.InputStream(
-            device=self.config.input_device,
-            channels=self.config.input_channels,
-            samplerate=self.config.input_sample_rate,
-            dtype="float32",
-            blocksize=self.config.block_size,
-            latency=self.config.input_latency,
-            callback=self._callback,
-        )
-        self.input.start()
+        # Device discovery may block. Keep the Telegram workers running while it probes.
+        opening = asyncio.create_task(asyncio.to_thread(self._open))
+        try:
+            await asyncio.shield(opening)
+        except AudioError:
+            await self.close()
+            raise
+        except asyncio.CancelledError:
+            # Finish native setup before closing it; never leave an opening thread behind.
+            with CancelScope(shield=True):
+                with suppress(Exception):
+                    await opening
+                await self.close()
+            raise
         self.resume()
+
+    def _open(self) -> None:
+        try:
+            import sounddevice as sd
+        except (ImportError, OSError) as error:
+            raise AudioError(f"Cannot load PortAudio: {error}") from error
+        refresh = self.sd is not None
+        self.sd = sd
+        try:
+            if refresh:
+                # PortAudio caches devices at initialization. The pinned sounddevice
+                # version exposes these hooks; all of this app's streams are closed first.
+                if sd._initialized:
+                    sd._terminate()
+                sd._initialize()
+            self.input_device = check_device(sd, self.config, "input")
+            self.output_device = check_device(sd, self.config, "output")
+            self.input = sd.InputStream(
+                device=self.input_device,
+                channels=self.config.input_channels,
+                samplerate=self.config.input_sample_rate,
+                dtype="float32",
+                blocksize=self.config.block_size,
+                latency=self.config.input_latency,
+                callback=self._callback,
+            )
+            self.input.start()
+        except (sd.PortAudioError, ValueError) as error:
+            raise AudioError(f"Cannot open configured audio devices: {error}") from error
 
     def _callback(self, data, frames, timing, status) -> None:
         if self.enabled:
@@ -166,26 +218,65 @@ class SoundDeviceAudio:
         return samples
 
     async def play(self, samples: np.ndarray) -> None:
-        if self.config.output_channels > 1:
-            samples = np.repeat(samples[:, None], self.config.output_channels, axis=1)
-        self.sd.play(
-            samples,
-            samplerate=self.config.output_sample_rate,
-            device=self.config.output_device,
-            latency=self.config.output_latency,
-            blocking=False,
-        )
+        samples = np.repeat(samples[:, None], self.config.output_channels, axis=1)
+        finished = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        cursor = 0
+        underflow = False
+
+        def callback(data, frames, timing, status):
+            nonlocal cursor, underflow
+            underflow = underflow or bool(status)
+            end = min(cursor + frames, len(samples))
+            data.fill(0)
+            data[: end - cursor] = samples[cursor:end]
+            cursor = end
+            if cursor == len(samples):
+                raise self.sd.CallbackStop
+
+        def finished_callback():
+            loop.call_soon_threadsafe(finished.set)
+
+        stream = None
         try:
-            status = await asyncio.to_thread(self.sd.wait)
-            if status:
+            stream = self.sd.OutputStream(
+                samplerate=self.config.output_sample_rate,
+                device=self.output_device,
+                channels=self.config.output_channels,
+                dtype="float32",
+                latency=self.config.output_latency,
+                callback=callback,
+                finished_callback=finished_callback,
+            )
+            stream.start()
+            latency = self.config.output_latency
+            latency_seconds = latency if isinstance(latency, (int, float)) else 0
+            timeout = (
+                len(samples) / self.config.output_sample_rate
+                + latency_seconds
+                + self.config.playback_grace_seconds
+            )
+            with fail_after(timeout):
+                await finished.wait()
+            if underflow:
                 raise AudioError("Speaker output underflow")
+        except TimeoutError:
+            raise AudioError("Speaker stopped completing playback") from None
+        except (self.sd.PortAudioError, ValueError) as error:
+            raise AudioError(f"Speaker playback failed: {error}") from error
         finally:
-            self.sd.stop()
+            # This worker owns stream cleanup; no blocking wait thread races with close.
+            if stream is not None:
+                try:
+                    stream.abort()
+                finally:
+                    stream.close()
 
     async def close(self) -> None:
         self.suspend()
-        if self.sd:
-            self.sd.stop()
         if self.input:
-            self.input.abort()
-            self.input.close()
+            stream, self.input = self.input, None
+            try:
+                stream.abort()
+            finally:
+                stream.close()
