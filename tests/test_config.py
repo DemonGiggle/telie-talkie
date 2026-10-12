@@ -41,6 +41,7 @@ def test_example_config_and_relative_paths():
         "[audio]\noutput_channels=0",
         "[audio]\nprocessing_block_size=0",
         "[audio]\nbuffer_blocks=0",
+        "[audio]\nplayback_grace_seconds=0",
         "[audio]\ninput_latency='fast'",
         "[audio]\noutput_latency=nan",
         "[audio]\ninput_gain=-1",

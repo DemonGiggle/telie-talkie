@@ -14,6 +14,7 @@ api_base_url = "https://api.telegram.org" # Or an HTTP-compatible Bot API proxy.
 # Omit devices to use PortAudio defaults, or set an index/name from `devices`.
 # input_device = "USB Audio"
 # output_device = "USB Audio"
+# Use unique stable names without the changing ALSA (hw:card,device) suffix.
 # Capture at the microphone's native rate; it is resampled to 16 kHz mono locally.
 input_sample_rate = 16000 # For a 48 kHz microphone, set 48000.
 input_channels = 1
@@ -24,6 +25,7 @@ block_size = 512 # Frames per hardware callback, in input_sample_rate units.
 processing_block_size = 512 # Frames handed to detection/recording, always at 16 kHz.
 buffer_blocks = 64 # Maximum queued hardware callbacks before reporting overflow.
 read_timeout_seconds = 1.0
+playback_grace_seconds = 5.0 # Extra time beyond audio duration/latency before retrying output.
 input_latency = "high" # "low", "high", or positive seconds (e.g. 0.05).
 output_latency = "high"
 resample_quality = "HQ" # QQ, LQ, MQ, HQ, or VHQ; higher quality can add latency.

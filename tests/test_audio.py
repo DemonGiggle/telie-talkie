@@ -87,14 +87,40 @@ async def test_configured_device_settings_and_stereo_output_reach_portaudio(monk
         def close(self):
             calls["closed"] = True
 
-    def play(samples, **kwargs):
-        calls["output"] = kwargs
-        calls["samples"] = samples
+    class CallbackStop(Exception):
+        pass
+
+    class OutputStream:
+        def __init__(self, **kwargs):
+            calls["output"] = kwargs
+            self.settings = kwargs
+
+        def start(self):
+            samples = np.empty((256, self.settings["channels"]), dtype=np.float32)
+            with pytest.raises(CallbackStop):
+                self.settings["callback"](samples, 256, None, False)
+            calls["samples"] = samples
+            self.settings["finished_callback"]()
+
+        def abort(self):
+            pass
+
+        def close(self):
+            pass
 
     monkeypatch.setitem(
         __import__("sys").modules,
         "sounddevice",
-        SimpleNamespace(InputStream=Stream, play=play, wait=lambda: None, stop=lambda: None),
+        SimpleNamespace(
+            InputStream=Stream,
+            OutputStream=OutputStream,
+            CallbackStop=CallbackStop,
+            stop=lambda: None,
+            PortAudioError=OSError,
+            _initialized=1,
+            check_input_settings=lambda **kwargs: None,
+            check_output_settings=lambda **kwargs: None,
+        ),
     )
     config = AudioConfig(
         input_sample_rate=48000,
