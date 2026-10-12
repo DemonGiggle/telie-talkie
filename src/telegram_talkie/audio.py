@@ -62,6 +62,42 @@ class SoundDeviceAudio:
     async def start(self) -> None:
         import sounddevice as sd
 
+        # Validate both endpoints before claiming the app is listening. Otherwise a stale
+        # output-device name can remain unnoticed until a wake phrase tries to play a tone,
+        # which fails inside the background task group and restarts the service.
+        for direction, check, device, channels, samplerate in (
+            (
+                "input",
+                getattr(sd, "check_input_settings", None),
+                self.config.input_device,
+                self.config.input_channels,
+                self.config.input_sample_rate,
+            ),
+            (
+                "output",
+                getattr(sd, "check_output_settings", None),
+                self.config.output_device,
+                self.config.output_channels,
+                self.config.output_sample_rate,
+            ),
+        ):
+            # The real sounddevice module exposes both checks. Keep lightweight audio
+            # adapters/test doubles compatible if they intentionally omit validation APIs.
+            if check is None:
+                continue
+            try:
+                check(
+                    device=device,
+                    channels=channels,
+                    dtype="float32",
+                    samplerate=samplerate,
+                )
+            except Exception as error:
+                raise AudioError(
+                    f"Configured {direction} audio device {device!r} is unavailable or "
+                    f"incompatible: {error}"
+                ) from error
+
         self.sd = sd
         self.loop = asyncio.get_running_loop()
         self.input = sd.InputStream(

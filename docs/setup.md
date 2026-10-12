@@ -14,7 +14,7 @@ If you do not know the ID, run `pair` with the runtime stopped, send the printed
 
 Set `detection.wake_phrase` to your preferred English phrases in TOML, such as `["HELLO KITTY", "HEY BUDDY"]`, and restart the app/service. Any listed phrase triggers recording; a single string also works. The app creates the keyword configuration automatically; the [wake phrase settings](configuration.md#wake-phrase) explain the supported format.
 
-1. Run `telie-talkie devices` and select the intended input and output. Device names usually survive reboots better than numeric indices. Where several devices share a name, use a more specific PortAudio name.
+1. Run `telie-talkie devices` and select the intended input and output. Device names usually survive reboots better than numeric indices. Where several devices share a name, use a more specific PortAudio name. If a name includes a dynamic ALSA suffix such as `(hw:2,0)`, prefer the unique stable portion before that suffix; card numbers can change after reboot or USB re-enumeration.
 2. Run `telie-talkie doctor --audio-check`. Hear the ready tone, speak for the configured check duration (three seconds by default), and confirm the replay is clear. Set the input rate and channels supported by the device; capture is normalized locally to 16 kHz mono. Output rate defaults to 48 kHz.
 3. Run `telie-talkie run`. Say each configured wake phrase clearly, wait for the beep and brief settling interval, then speak. Test at the normal distance and background noise level.
 4. Increase `keywords_threshold` if ordinary speech causes false triggers. Decrease it cautiously if the phrase rarely triggers. `keywords_score` controls keyword boosting; higher scores make the phrase easier to detect.
@@ -34,7 +34,7 @@ The guide covers installation, pairing and audio checks as the service account, 
 | Symptom | Check |
 | --- | --- |
 | PortAudio library missing | Install `libportaudio2` on Debian/Raspberry Pi OS |
-| Invalid input or sample rate | Verify the configured hardware rate, channel count, and device with `doctor` |
+| Invalid input or output device/sample rate | Run `doctor` and verify both configured PortAudio endpoints; use a unique stable device name if ALSA card numbering changed |
 | Speaker silent | Check output device, mixer mute, amplifier power, and `audio.volume` |
 | Device available interactively but not in service | Check `audio` group access and ALSA versus session audio routing |
 | Missing model | Run `setup-models` using the same configuration as `run` |
